@@ -1,0 +1,150 @@
+-- ============================================================================
+-- ESQUEMA OFICIAL DE PRODUÇÃO PARA POSTGRESQL (DJEN MONITORAMENTO)
+-- Sociedade de Advogados: Escritório Exemplo
+-- Advogados Monitorados:
+--   - Advogada Exemplo A (OAB/GO 123.456)
+--   - Advogado Exemplo B (OAB/RJ 234.567)
+-- ============================================================================
+
+-- Extensões úteis
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 1. TABELA PRINCIPAL DE PUBLICAÇÕES JUDICIAIS ACUMULADAS
+CREATE TABLE IF NOT EXISTS public.comunicacoes (
+  id BIGSERIAL,
+  comunicacao_id BIGINT PRIMARY KEY, -- Identificador único oficial da comunicação no CNJ / DJEN
+  hash TEXT,
+  sigla_tribunal VARCHAR(50) NOT NULL,
+  nome_orgao TEXT NOT NULL,
+  numero_processo VARCHAR(100) NOT NULL,
+  numero_processo_mascara VARCHAR(100) NOT NULL,
+  nome_classe VARCHAR(255),
+  tipo_comunicacao VARCHAR(100) NOT NULL,
+  texto TEXT NOT NULL,
+  meio VARCHAR(150) DEFAULT 'Diário de Justiça Eletrônico Nacional (DJEN)',
+  link_fonte TEXT,
+  data_disponibilizacao DATE NOT NULL,
+  data_publicacao DATE NOT NULL, -- CPC art. 224: 1º dia útil seguinte
+  status_revisao VARCHAR(50) DEFAULT 'A revisar' CHECK (status_revisao IN ('A revisar', 'Pendente', 'Em andamento', 'Concluído')),
+  observacoes TEXT,
+  providencia VARCHAR(255) DEFAULT 'A definir',
+  raw_json JSONB,
+  importado_em TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- 2. RELACIONAMENTO N:M ENTRE PUBLICAÇÕES E ADVOGADOS RESPONSÁVEIS
+CREATE TABLE IF NOT EXISTS public.comunicacoes_advogados (
+  comunicacao_id BIGINT NOT NULL REFERENCES public.comunicacoes(comunicacao_id) ON DELETE CASCADE,
+  advogado_id VARCHAR(50) NOT NULL,
+  advogado_nome VARCHAR(255) NOT NULL,
+  advogado_oab VARCHAR(50) NOT NULL,
+  vinculado_em TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+  PRIMARY KEY (comunicacao_id, advogado_id)
+);
+
+-- 3. CATÁLOGO DE EXCLUSÕES CONTROLADAS (TOMBSTONES ANTI-REIMPORTAÇÃO)
+CREATE TABLE IF NOT EXISTS public.comunicacoes_removidas (
+  comunicacao_id BIGINT PRIMARY KEY,
+  numero_processo VARCHAR(100),
+  removido_em TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+  motivo TEXT,
+  usuario VARCHAR(150) DEFAULT 'advocacia'
+);
+
+-- 4. METADADOS DE CONTROLE DE SINCRONIZAÇÃO
+CREATE TABLE IF NOT EXISTS public.sync_metadata (
+  id INT PRIMARY KEY CHECK (id = 1),
+  last_attempt_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  last_window_start DATE,
+  last_window_end DATE,
+  next_scheduled_at TIMESTAMPTZ,
+  status VARCHAR(20) DEFAULT 'idle' CHECK (status IN ('idle', 'running', 'success', 'failed')),
+  last_error_message TEXT,
+  last_result_summary TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- Inserir registro singleton de sincronização
+INSERT INTO public.sync_metadata (id, status)
+VALUES (1, 'idle')
+ON CONFLICT (id) DO NOTHING;
+
+-- 5. HISTÓRICO DE LOGS DE SINCRONIZAÇÃO
+CREATE TABLE IF NOT EXISTS public.sync_logs (
+  id BIGSERIAL PRIMARY KEY,
+  tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('automatico', 'manual', 'cron', 'job')),
+  iniciado_em TIMESTAMPTZ NOT NULL,
+  finalizado_em TIMESTAMPTZ,
+  sucesso BOOLEAN NOT NULL,
+  total_novas INT DEFAULT 0,
+  total_duplicadas INT DEFAULT 0,
+  total_removidas_ignoradas INT DEFAULT 0,
+  detalhes TEXT,
+  erro TEXT
+);
+
+-- 6. CONTROLE DE CONCORRÊNCIA DISTRIBUÍDA (LOCK PERSISTENTE PARA CLOUD RUN / SCHEDULER)
+CREATE TABLE IF NOT EXISTS public.sync_locks (
+  lock_name VARCHAR(50) PRIMARY KEY,
+  holder_id VARCHAR(150) NOT NULL,
+  acquired_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- 7. AUDITORIA DE SEGURANÇA E OPERAÇÕES DA BANCA
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  usuario VARCHAR(150) NOT NULL,
+  acao VARCHAR(50) NOT NULL,
+  recurso_id VARCHAR(100),
+  detalhes TEXT,
+  ip VARCHAR(60),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- ============================================================================
+-- ÍNDICES DE ALTA PERFORMANCE
+-- ============================================================================
+CREATE INDEX IF NOT EXISTS idx_comunicacoes_data_disp ON public.comunicacoes (data_disponibilizacao DESC);
+CREATE INDEX IF NOT EXISTS idx_comunicacoes_status ON public.comunicacoes (status_revisao);
+CREATE INDEX IF NOT EXISTS idx_comunicacoes_proc ON public.comunicacoes (numero_processo);
+CREATE INDEX IF NOT EXISTS idx_comunicacoes_proc_mask ON public.comunicacoes (numero_processo_mascara);
+CREATE INDEX IF NOT EXISTS idx_comunicacoes_tribunal ON public.comunicacoes (sigla_tribunal);
+CREATE INDEX IF NOT EXISTS idx_comunicacoes_adv_id ON public.comunicacoes_advogados (advogado_id);
+CREATE INDEX IF NOT EXISTS idx_sync_logs_iniciado ON public.sync_logs (iniciado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_criado ON public.audit_logs (criado_em DESC);
+
+-- ============================================================================
+-- POLÍTICAS DE ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+ALTER TABLE public.comunicacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comunicacoes_advogados ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comunicacoes_removidas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sync_metadata ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sync_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sync_locks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de acesso para Service Role (servidor backend seguro)
+CREATE POLICY "Servidor backend acesso total comunicacoes" ON public.comunicacoes
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "Servidor backend acesso total advogados" ON public.comunicacoes_advogados
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "Servidor backend acesso total removidas" ON public.comunicacoes_removidas
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "Servidor backend acesso total metadata" ON public.sync_metadata
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "Servidor backend acesso total logs" ON public.sync_logs
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "Servidor backend acesso total locks" ON public.sync_locks
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "Servidor backend acesso total audit" ON public.audit_logs
+  FOR ALL TO service_role USING (true) WITH CHECK (true);

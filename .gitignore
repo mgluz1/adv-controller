@@ -1,0 +1,26 @@
+# Dependências e builds
+node_modules/
+dist/
+test-results/
+playwright-report/
+.vercel/
+
+# Segredos e configuração local (nunca versionar)
+.env
+.env.*
+!.env.example
+
+# Bancos locais e dados
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups locais da limpeza (podem conter dados do escritório de origem)
+.backups/
+
+# Sistema
+.DS_Store
+*.log
+
+# Cópia local (somente leitura) do projeto de origem, se for recuperada
+referencia/origem/

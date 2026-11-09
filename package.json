@@ -1,0 +1,42 @@
+{
+  "name": "adv-controller",
+  "private": true,
+  "version": "0.0.0",
+  "description": "SaaS multi-escritório para monitoramento e revisão de publicações do DJEN",
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx server.ts",
+    "start": "NODE_ENV=production node --import tsx server.ts",
+    "build": "vite build",
+    "test": "node --import tsx --test tests/*.test.ts tests/server/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "db:generate": "drizzle-kit generate",
+    "db:target": "node --import tsx scripts/db.ts target",
+    "db:plan": "node --import tsx scripts/db.ts plan",
+    "db:migrate": "node --import tsx scripts/db.ts apply"
+  },
+  "dependencies": {
+    "better-auth": "1.7.18",
+    "dotenv": "17.2.3",
+    "drizzle-orm": "0.45.4",
+    "express": "4.22.3",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
+    "@playwright/test": "1.64.1",
+    "@types/express": "4.17.21",
+    "@types/node": "22.14.0",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "6.4.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

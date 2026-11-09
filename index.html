@@ -1,0 +1,2497 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#102f2d" />
+    <title>Adv Controller — Monitoramento de Publicações Processuais</title>
+    <meta name="description" content="Painel de alta densidade para monitoramento e revisão de publicações processuais (DJEN) por escritório de advocacia." />
+    <meta property="og:title" content="Adv Controller — Monitoramento de Publicações Processuais" />
+    <meta property="og:description" content="Painel de alta densidade para monitoramento e revisão de publicações processuais (DJEN) por escritório de advocacia." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23102f2d'/%3E%3Cpath d='M9.5 23 16 9l6.5 14M12 19h8' fill='none' stroke='%23c9a96e' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Fonte carregada sem bloquear a primeira pintura (até chegar, usa a fonte do sistema) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap" /></noscript>
+
+    <style>
+      /* ==========================================================================
+         TOKENS — Adv Controller (paleta herdada do projeto de origem; definir identidade própria)
+         Cores só aqui. Componentes usam apenas var(--*).
+         Contrastes conferidos (WCAG 2.1): texto 14,8:1; texto-2 6,0:1 em branco e
+         5,5:1 em papel; bronze 5,2:1 em papel; verde 10:1 em branco; CTA 6,4:1;
+         borda de controle 3,4:1 em branco. Dourado sobre --verde (4,45:1) é usado
+         apenas como indicador gráfico, nunca como texto.
+         ========================================================================== */
+      :root {
+        /* Paleta institucional */
+        --verde: #1a4a45;
+        --verde-profundo: #102f2d;
+        --papel: #f5f4f0;
+        --branco: #ffffff;
+        --dourado: #c9a96e;
+        --bronze: #80612e;
+        --texto: #1e2a28;
+        --texto-2: #586660;
+        --divisoria: #ddd9cf;
+
+        /* Derivados da paleta */
+        --divisoria-leve: #eeece7;
+        --borda-controle: #858e8a;
+        --dourado-hover: #d6bc8a;
+        --verde-tinta: #eaf0ee;
+        --linha-hover: #f7f9f8;
+        --linha-selecionada: #f0f4f3;
+        --sobre-escuro: rgba(255, 255, 255, 0.92);
+        --sobre-escuro-2: rgba(255, 255, 255, 0.64);
+        --sobre-verde-2: rgba(255, 255, 255, 0.8);
+        --fio-escuro: rgba(255, 255, 255, 0.14);
+        --hover-escuro: rgba(255, 255, 255, 0.08);
+        --dourado-fio: rgba(201, 169, 110, 0.6);
+        --veu-modal: rgba(16, 47, 45, 0.55);
+
+        /* Status de revisão: tinta, texto (≥6:1) e borda (≥3:1) */
+        --revisar-fundo: #f7f0e1;
+        --revisar-texto: #6e5220;
+        --revisar-borda: #a8874d;
+        --analise-fundo: #e6eeec;
+        --analise-texto: var(--verde);
+        --analise-borda: #5e827d;
+        --concluida-fundo: #efeeea;
+        --concluida-texto: #46534f;
+        --concluida-borda: var(--borda-controle);
+        --pendente-fundo: #f6e7e4;
+        --pendente-texto: #8a2e22;
+        --pendente-borda: #b5675b;
+
+        /* Ação destrutiva */
+        --perigo: #9b2c1f;
+        --perigo-escuro: #7f2318;
+        --perigo-tinta: #f6e7e4;
+
+        /* Forma */
+        --raio-controle: 6px;
+        --raio-superficie: 8px;
+        --sombra-modal: 0 12px 32px -8px rgba(16, 47, 45, 0.24);
+        --sombra-toast: 0 8px 24px -6px rgba(16, 47, 45, 0.3);
+
+        /* Tipografia */
+        --fonte: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --fonte-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+        --fonte-titulo: "Fraunces", Georgia, "Times New Roman", serif;
+
+        /* Tela de acesso */
+        --brilho-marca: radial-gradient(ellipse 60% 50% at 50% 42%, rgba(201, 169, 110, 0.12), transparent 70%);
+        --fundo-marca: linear-gradient(160deg, var(--verde) 0%, var(--verde-profundo) 62%);
+        --moldura-marca: rgba(201, 169, 110, 0.28);
+        --sobre-marca-2: rgba(255, 255, 255, 0.72);
+        --raio-painel-login: 24px;
+        --sombra-painel-login: 0 -12px 32px -12px rgba(0, 0, 0, 0.35);
+        --sombra-emblema: drop-shadow(0 10px 28px rgba(0, 0, 0, 0.28));
+
+        /* Ícones de seta dos selects */
+        --seta-select: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586660' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: var(--fonte);
+        font-size: 13px;
+        line-height: 1.5;
+        background-color: var(--papel);
+        color: var(--texto);
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+        font-feature-settings: "cv11", "ss01";
+      }
+
+      button, input, select, textarea {
+        font: inherit;
+        color: inherit;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--verde);
+        outline-offset: 2px;
+      }
+
+      .font-mono {
+        font-family: var(--fonte-mono);
+        font-weight: 400;
+      }
+
+      .text-xs { font-size: 11px; }
+      .text-muted { color: var(--texto-2); }
+      .mt-2 { margin-top: 8px; }
+
+      .app-container {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        max-width: 1720px;
+        margin: 0 auto;
+        padding: 16px 20px 32px;
+        gap: 12px;
+      }
+
+      /* ==========================================================================
+         1. CABEÇALHO
+         ========================================================================== */
+      .top-header {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 20px;
+        background: var(--verde-profundo);
+        color: var(--sobre-escuro);
+        border-radius: var(--raio-superficie);
+      }
+
+      .top-header :focus-visible {
+        outline-color: var(--dourado);
+      }
+
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .header-logo {
+        display: block;
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        color: var(--dourado);
+      }
+
+      .header-title {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+        color: var(--branco);
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .btn-sync-trigger,
+      .btn-header-outline,
+      .btn-header-ghost {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        border-radius: var(--raio-controle);
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        white-space: nowrap;
+      }
+
+      /* CTA dourado com texto escuro */
+      .btn-sync-trigger {
+        background: var(--dourado);
+        color: var(--verde-profundo);
+        border: 1px solid var(--dourado);
+      }
+
+      .btn-sync-trigger:hover:not(:disabled) {
+        background: var(--dourado-hover);
+        border-color: var(--dourado-hover);
+      }
+
+      .btn-sync-trigger:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .btn-sync-trigger.loading svg {
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      .btn-header-outline {
+        background: transparent;
+        color: var(--branco);
+        border: 1px solid var(--dourado-fio);
+      }
+
+      .btn-header-outline:hover {
+        border-color: var(--dourado);
+        background: var(--hover-escuro);
+      }
+
+      .btn-header-ghost {
+        background: transparent;
+        color: var(--sobre-escuro-2);
+        border: 1px solid transparent;
+        font-weight: 500;
+      }
+
+      .btn-header-ghost:hover {
+        color: var(--branco);
+        background: var(--hover-escuro);
+      }
+
+      /* Uma linha de texto pequeno: rótulo + valor */
+      .header-status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px 16px;
+        flex-wrap: wrap;
+        padding-top: 8px;
+        border-top: 1px solid var(--fio-escuro);
+        font-size: 12px;
+      }
+
+      .header-meta {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        row-gap: 4px;
+        color: var(--sobre-escuro-2);
+      }
+
+      .meta-item {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .meta-item + .meta-item::before {
+        content: "·";
+        margin: 0 8px;
+        color: var(--sobre-escuro-2);
+      }
+
+      .meta-item svg {
+        display: none;
+      }
+
+      .meta-item strong {
+        font-family: var(--fonte-mono);
+        font-weight: 400;
+        color: var(--sobre-escuro);
+      }
+
+      .pending-counter {
+        color: var(--sobre-escuro);
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ==========================================================================
+         2. ABAS POR ADVOGADO
+         ========================================================================== */
+      .lawyer-tabs-bar {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--divisoria);
+      }
+
+      .lawyer-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: var(--raio-controle);
+        background: transparent;
+        border: none;
+        color: var(--texto-2);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.15s ease, color 0.15s ease;
+        white-space: nowrap;
+      }
+
+      .lawyer-tab:hover {
+        color: var(--texto);
+        background: var(--verde-tinta);
+      }
+
+      .lawyer-tab.active {
+        background: var(--verde);
+        color: var(--branco);
+        box-shadow: inset 0 -2px 0 var(--dourado);
+      }
+
+      .tab-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--texto-2);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .lawyer-tab.active .tab-badge {
+        color: var(--sobre-verde-2);
+      }
+
+      .tab-badge.badge-has-pending {
+        color: var(--bronze);
+        font-weight: 600;
+      }
+
+      .tab-badge.badge-has-pending::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--bronze);
+      }
+
+      .lawyer-tab.active .tab-badge.badge-has-pending {
+        color: var(--branco);
+      }
+
+      .lawyer-tab.active .tab-badge.badge-has-pending::before {
+        background: var(--dourado);
+      }
+
+      /* ==========================================================================
+         4. BARRA DE FILTROS
+         ========================================================================== */
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 12px;
+        flex-wrap: wrap;
+      }
+
+      .toolbar-left, .toolbar-filters, .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .search-box {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 300px;
+      }
+
+      .search-icon {
+        position: absolute;
+        left: 12px;
+        color: var(--texto-2);
+        pointer-events: none;
+      }
+
+      .search-input,
+      .filter-select {
+        height: 36px;
+        border-radius: var(--raio-controle);
+        background-color: var(--branco);
+        border: 1px solid var(--borda-controle);
+        font-size: 13px;
+        color: var(--texto);
+        transition: border-color 0.15s ease;
+      }
+
+      .search-input {
+        width: 100%;
+        padding: 0 12px 0 32px;
+      }
+
+      .search-input::placeholder {
+        color: var(--texto-2);
+      }
+
+      .filter-select {
+        padding: 0 32px 0 12px;
+        cursor: pointer;
+        appearance: none;
+        background-image: var(--seta-select);
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        background-size: 14px;
+      }
+
+      .search-input:hover,
+      .filter-select:hover {
+        border-color: var(--texto-2);
+      }
+
+      .search-input:focus,
+      .filter-select:focus {
+        border-color: var(--verde);
+      }
+
+      .btn-batch-remove {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: var(--raio-controle);
+        background: transparent;
+        color: var(--texto);
+        border: 1px solid var(--borda-controle);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+      }
+
+      .btn-batch-remove svg {
+        color: var(--texto-2);
+      }
+
+      .btn-batch-remove:hover {
+        background: var(--branco);
+        border-color: var(--verde);
+      }
+
+      /* ==========================================================================
+         5. TABELA (ESTILO PLANILHA)
+         ========================================================================== */
+      .table-container {
+        position: relative;
+        background: var(--branco);
+        border: 1px solid var(--divisoria);
+        border-radius: var(--raio-superficie);
+        overflow: auto;
+        max-height: calc(100vh - 280px);
+      }
+
+      .pub-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        text-align: left;
+      }
+
+      .pub-table th {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--papel);
+        color: var(--bronze);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--divisoria);
+        border-right: 1px solid var(--divisoria-leve);
+        cursor: default;
+        user-select: none;
+        white-space: nowrap;
+      }
+
+      .pub-table th:last-child,
+      .pub-table td:last-child {
+        border-right: none;
+      }
+
+      /* Só a disponibilização ordena; o indicador acompanha a ordem real */
+      .pub-table th[data-sort="dataDisponibilizacao"] {
+        cursor: pointer;
+      }
+
+      .pub-table th[data-sort="dataDisponibilizacao"]:hover {
+        color: var(--verde);
+      }
+
+      .pub-table th.sorted-desc > span::after { content: " ▼"; }
+      .pub-table th.sorted-asc > span::after { content: " ▲"; }
+
+      .pub-table td {
+        padding: 8px 12px;
+        font-size: 13px;
+        border-bottom: 1px solid var(--divisoria);
+        border-right: 1px solid var(--divisoria-leve);
+        vertical-align: middle;
+      }
+
+      .pub-row {
+        background-color: var(--branco);
+        cursor: pointer;
+        transition: background-color 0.1s ease;
+      }
+
+      .pub-row:hover {
+        background-color: var(--linha-hover);
+      }
+
+      .pub-row.row-expanded-parent {
+        background-color: var(--linha-selecionada);
+      }
+
+      .pub-row.row-expanded-parent td {
+        border-bottom-color: var(--divisoria-leve);
+      }
+
+      /* Concluída: tom secundário, sem perder contraste AA */
+      .row-concluida .tribunal-sigla,
+      .row-concluida .classe-nome,
+      .row-concluida .num-processo,
+      .row-concluida .data-principal,
+      .row-concluida .providencia-texto {
+        color: var(--texto-2);
+      }
+
+      /* Coluna fixa horizontalmente (Nº do processo), fundo opaco */
+      .pub-table th.col-processo {
+        position: sticky;
+        left: 0;
+        z-index: 12;
+        background: var(--papel);
+        border-right: 1px solid var(--divisoria);
+      }
+
+      .pub-table td.col-processo {
+        position: sticky;
+        left: 0;
+        z-index: 5;
+        background: inherit;
+        border-right: 1px solid var(--divisoria);
+      }
+
+      /* Células */
+      .tribunal-cell,
+      .classe-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .tribunal-sigla {
+        font-weight: 600;
+        color: var(--texto);
+      }
+
+      .orgao-texto {
+        font-size: 12px;
+        color: var(--texto-2);
+        max-width: 220px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .classe-nome {
+        font-weight: 500;
+        color: var(--texto);
+        max-width: 220px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .comunicacao-tipo-tag {
+        font-size: 11px;
+        color: var(--texto-2);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .processo-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+
+      .num-processo {
+        font-size: 12.5px;
+        color: var(--verde);
+        white-space: nowrap;
+      }
+
+      .advogados-row {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+
+      /* Chips: mesmo tom de verde; a OAB se distingue pelo rótulo e pelo ponto */
+      .badge-adv {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border-radius: var(--raio-controle);
+        background: var(--verde-tinta);
+        color: var(--verde);
+        font-family: var(--fonte);
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .badge-adv::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      /* Marcador de advogado: 4 variações cíclicas (cheio/vazado × verde/bronze), atribuídas pela ordem das abas */
+      .tag-adv-0::before {
+        background: var(--verde);
+      }
+
+      .tag-adv-1::before {
+        border: 1.5px solid var(--verde);
+      }
+
+      .tag-adv-2::before {
+        background: var(--bronze);
+      }
+
+      .tag-adv-3::before {
+        border: 1.5px solid var(--bronze);
+      }
+
+      /* Datas: uma linha, valor em mono e rótulo neutro */
+      .data-disp-box,
+      .data-pub-box {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        white-space: nowrap;
+      }
+
+      .data-principal {
+        font-size: 12.5px;
+        color: var(--texto);
+      }
+
+      .data-label-sub {
+        font-family: var(--fonte);
+        font-size: 11px;
+        color: var(--texto-2);
+      }
+
+      .data-label-sub::before {
+        content: "·";
+        margin-right: 6px;
+      }
+
+      /* Publicação (fonte) é quase sempre "Não informada": valor neutro */
+      .col-data-pub .data-principal {
+        font-family: var(--fonte);
+        font-size: 12px;
+        color: var(--texto-2);
+      }
+
+      .providencia-cell {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .providencia-texto {
+        font-weight: 500;
+        color: var(--texto);
+      }
+
+      .providencia-indefinida {
+        font-weight: 400;
+        color: var(--texto-2);
+      }
+
+      .obs-icon {
+        font-size: 12px;
+      }
+
+      /* Status de revisão: semântica mantida, cores sóbrias, sempre com texto */
+      .select-status-wrapper {
+        display: inline-block;
+      }
+
+      .select-status {
+        height: 32px;
+        padding: 0 28px 0 10px;
+        border-radius: var(--raio-controle);
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid var(--borda-controle);
+        cursor: pointer;
+        appearance: none;
+        background-image: var(--seta-select);
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        background-size: 12px;
+        transition: border-color 0.15s ease;
+      }
+
+      .select-status.status-a-revisar {
+        background-color: var(--revisar-fundo);
+        color: var(--revisar-texto);
+        border-color: var(--revisar-borda);
+      }
+
+      .select-status.status-pendente {
+        background-color: var(--pendente-fundo);
+        color: var(--pendente-texto);
+        border-color: var(--pendente-borda);
+      }
+
+      .select-status.status-andamento {
+        background-color: var(--analise-fundo);
+        color: var(--analise-texto);
+        border-color: var(--analise-borda);
+      }
+
+      .select-status.status-concluido {
+        background-color: var(--concluida-fundo);
+        color: var(--concluida-texto);
+        border-color: var(--concluida-borda);
+      }
+
+      /* ==========================================================================
+         6. LINHA EXPANDIDA
+         ========================================================================== */
+      .expanded-row td {
+        background: var(--linha-selecionada);
+        padding: 0 16px 16px;
+        border-bottom: 1px solid var(--divisoria);
+      }
+
+      .expanded-content {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding-top: 12px;
+      }
+
+      .expanded-content > .btn-secondary,
+      .expanded-content > .btn-danger {
+        align-self: flex-start;
+      }
+
+      .expanded-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--divisoria);
+      }
+
+      .expanded-title-area {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .expanded-badge-djen {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--bronze);
+      }
+
+      .expanded-id-tag,
+      .expanded-hash-tag {
+        font-family: var(--fonte);
+        font-size: 12px;
+        color: var(--texto-2);
+      }
+
+      .expanded-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .btn-action-icon {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        border-radius: var(--raio-controle);
+        background: var(--branco);
+        border: 1px solid var(--borda-controle);
+        color: var(--texto);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s ease, color 0.15s ease;
+      }
+
+      .btn-action-icon:hover {
+        border-color: var(--verde);
+        color: var(--verde);
+      }
+
+      /* Arquivar é reversível: mesma ação secundária, sem alarme */
+      .btn-action-danger:hover {
+        border-color: var(--texto);
+        color: var(--texto);
+      }
+
+      .legal-notice-box {
+        padding: 4px 0 4px 12px;
+        border-left: 2px solid var(--dourado);
+        font-size: 12px;
+        color: var(--texto-2);
+      }
+
+      .full-text-container {
+        background: var(--branco);
+        border: 1px solid var(--divisoria);
+        border-radius: var(--raio-superficie);
+        padding: 12px 16px;
+      }
+
+      .full-text-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--texto);
+      }
+
+      .full-text-pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--fonte);
+        font-size: 13px;
+        line-height: 1.65;
+        color: var(--texto);
+        max-height: 380px;
+        overflow-y: auto;
+      }
+
+      /* ==========================================================================
+         7. PAGINAÇÃO, ESTADOS E AVISOS
+         ========================================================================== */
+      .table-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 4px;
+        font-size: 12px;
+        color: var(--texto-2);
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .table-pagination:empty {
+        display: none;
+      }
+
+      .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-page {
+        height: 32px;
+        padding: 0 12px;
+        border-radius: var(--raio-controle);
+        background: var(--branco);
+        border: 1px solid var(--borda-controle);
+        color: var(--texto);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s ease, color 0.15s ease;
+      }
+
+      .btn-page:hover:not(:disabled) {
+        border-color: var(--verde);
+        color: var(--verde);
+      }
+
+      .btn-page:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .page-indicator {
+        font-weight: 500;
+        color: var(--texto);
+      }
+
+      .empty-state {
+        padding: 48px 16px;
+        text-align: center;
+        color: var(--texto-2);
+      }
+
+      .empty-state-icon {
+        display: block;
+        width: 40px;
+        height: 40px;
+        margin: 0 auto 12px;
+        opacity: 0.5;
+      }
+
+      .error-box {
+        padding: 24px 16px;
+        text-align: center;
+        color: var(--perigo);
+      }
+
+      .loading-text {
+        color: var(--texto-2);
+      }
+
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 9999;
+        padding: 12px 16px;
+        background: var(--verde-profundo);
+        color: var(--branco);
+        font-size: 13px;
+        font-weight: 500;
+        border-radius: var(--raio-superficie);
+        box-shadow: var(--sombra-toast);
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        pointer-events: none;
+      }
+
+      .toast.visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      .toast-erro {
+        background: var(--perigo);
+      }
+
+      .toast-sucesso {
+        background: var(--verde-profundo);
+        border-left: 3px solid var(--dourado);
+      }
+
+      .toast-info {
+        background: var(--texto);
+      }
+
+      /* ==========================================================================
+         8. MODAIS
+         ========================================================================== */
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: var(--veu-modal);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
+      }
+
+      .modal-backdrop.modal-visible {
+        display: flex;
+      }
+
+      .modal-dialog {
+        background: var(--branco);
+        border-radius: var(--raio-superficie);
+        max-width: 540px;
+        width: 100%;
+        padding: 24px;
+        box-shadow: var(--sombra-modal);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .modal-dialog-large {
+        max-width: 820px;
+        max-height: 88vh;
+        overflow-y: auto;
+      }
+
+      .modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .modal-title,
+      .modal-header h2 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--texto);
+      }
+
+      .modal-close-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: var(--raio-controle);
+        background: transparent;
+        border: none;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        color: var(--texto-2);
+      }
+
+      .modal-close-btn:hover {
+        background: var(--papel);
+        color: var(--texto);
+      }
+
+      .modal-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        font-size: 13px;
+        color: var(--texto);
+      }
+
+      .modal-body label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--texto);
+        margin-bottom: -4px;
+      }
+
+      .modal-body label strong {
+        font-weight: 500;
+      }
+
+      .modal-body input,
+      .modal-body textarea {
+        width: 100%;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: var(--raio-controle);
+        background: var(--branco);
+        border: 1px solid var(--borda-controle);
+        font-size: 13px;
+        transition: border-color 0.15s ease;
+      }
+
+      .modal-body textarea {
+        height: auto;
+        min-height: 88px;
+        padding: 8px 12px;
+        resize: vertical;
+      }
+
+      .modal-body input:focus,
+      .modal-body textarea:focus {
+        border-color: var(--verde);
+      }
+
+      .modal-body h4 {
+        margin-top: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--bronze);
+      }
+
+      #modal-diagnostico-body p {
+        font-size: 12.5px;
+        color: var(--texto);
+      }
+
+      #login-message:empty {
+        display: none;
+      }
+
+      #login-message {
+        font-size: 12px;
+        color: var(--perigo);
+      }
+
+      .modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 16px;
+        border-top: 1px solid var(--divisoria);
+      }
+
+      .btn-primary,
+      .btn-secondary,
+      .btn-danger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 16px;
+        border-radius: var(--raio-controle);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+      }
+
+      .btn-primary {
+        background: var(--verde);
+        color: var(--branco);
+        border: 1px solid var(--verde);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--verde-profundo);
+        border-color: var(--verde-profundo);
+      }
+
+      .btn-secondary {
+        background: var(--branco);
+        color: var(--texto);
+        border: 1px solid var(--borda-controle);
+        font-weight: 500;
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        border-color: var(--verde);
+        color: var(--verde);
+      }
+
+      .btn-danger {
+        background: var(--perigo);
+        color: var(--branco);
+        border: 1px solid var(--perigo);
+      }
+
+      .btn-danger:hover:not(:disabled) {
+        background: var(--perigo-escuro);
+        border-color: var(--perigo-escuro);
+      }
+
+      .btn-primary:disabled,
+      .btn-secondary:disabled,
+      .btn-danger:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .preview-alert {
+        margin-top: 8px;
+        padding: 8px 12px;
+        border-radius: var(--raio-controle);
+        background: var(--perigo-tinta);
+        color: var(--perigo);
+        font-size: 12px;
+      }
+
+      .preview-empty,
+      .preview-success {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px;
+        border-radius: var(--raio-controle);
+        background: var(--papel);
+        font-size: 12.5px;
+      }
+
+      /* ==========================================================================
+         9. TELA DE ACESSO
+         Ocupa a tela inteira e oculta o painel até a autenticação.
+         ========================================================================== */
+      .modal-backdrop.login-screen {
+        padding: 0;
+        background: var(--branco);
+        align-items: stretch;
+        justify-content: stretch;
+        overflow-y: auto;
+      }
+
+      .login-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 11fr) minmax(420px, 9fr);
+        width: 100%;
+        min-height: 100%;
+      }
+
+      /* Marca */
+      .login-brand {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 64px 48px;
+        background: var(--brilho-marca), var(--fundo-marca);
+        color: var(--sobre-escuro);
+        overflow: hidden;
+      }
+
+      /* Filete dourado interno, eco da moldura da peça institucional */
+      .login-brand::before {
+        content: "";
+        position: absolute;
+        inset: 24px;
+        border: 1px solid var(--moldura-marca);
+        border-radius: var(--raio-superficie);
+        pointer-events: none;
+      }
+
+      .login-brand-inner {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        max-width: 440px;
+      }
+
+      .login-emblem {
+        display: block;
+        color: var(--dourado);
+        width: 208px;
+        height: auto;
+        aspect-ratio: 630 / 616;
+        filter: var(--sombra-emblema);
+      }
+
+      .login-wordmark {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        margin-top: 32px;
+      }
+
+      .login-wordmark-name {
+        font-family: var(--fonte-titulo);
+        font-size: 44px;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--dourado);
+      }
+
+      .login-wordmark-sub {
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--sobre-marca-2);
+      }
+
+      .login-rule {
+        display: block;
+        width: 48px;
+        height: 1px;
+        margin: 32px 0 16px;
+        background: var(--dourado);
+      }
+
+      .login-product {
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--sobre-escuro);
+      }
+
+      /* Formulário */
+      .login-panel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 64px 48px;
+        background: var(--branco);
+      }
+
+      .login-card {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 360px;
+      }
+
+      .login-eyebrow {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--bronze);
+      }
+
+      .login-title {
+        margin-top: 12px;
+        font-family: var(--fonte-titulo);
+        font-size: 32px;
+        font-weight: 500;
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+        color: var(--texto);
+      }
+
+      .login-subtitle {
+        margin-top: 8px;
+        font-size: 14px;
+        color: var(--texto-2);
+      }
+
+      .login-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 24px;
+      }
+
+      .login-field + .login-field {
+        margin-top: 16px;
+      }
+
+      .login-field label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--texto);
+      }
+
+      .login-field input {
+        width: 100%;
+        height: 44px;
+        padding: 0 12px;
+        border-radius: var(--raio-controle);
+        background: var(--branco);
+        border: 1px solid var(--borda-controle);
+        font-size: 15px;
+        color: var(--texto);
+        transition: border-color 0.15s ease;
+      }
+
+      .login-field input:hover {
+        border-color: var(--texto-2);
+      }
+
+      .login-field input:focus {
+        border-color: var(--verde);
+      }
+
+      .login-password {
+        position: relative;
+      }
+
+      .login-password input {
+        padding-right: 48px;
+      }
+
+      .login-toggle {
+        position: absolute;
+        top: 50%;
+        right: 4px;
+        transform: translateY(-50%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border: none;
+        border-radius: var(--raio-controle);
+        background: transparent;
+        color: var(--texto-2);
+        cursor: pointer;
+      }
+
+      .login-toggle:hover {
+        color: var(--verde);
+        background: var(--verde-tinta);
+      }
+
+      .login-toggle .icone-olho-fechado,
+      .login-toggle[aria-pressed="true"] .icone-olho {
+        display: none;
+      }
+
+      .login-toggle[aria-pressed="true"] .icone-olho-fechado {
+        display: block;
+      }
+
+      .login-card #login-message {
+        margin-top: 16px;
+        padding: 8px 12px;
+        border-radius: var(--raio-controle);
+        background: var(--perigo-tinta);
+        font-size: 13px;
+      }
+
+      .login-submit {
+        height: 44px;
+        margin-top: 24px;
+        font-size: 14px;
+      }
+
+      .login-note {
+        margin-top: 32px;
+        padding-top: 16px;
+        border-top: 1px solid var(--divisoria);
+        font-size: 12px;
+        color: var(--texto-2);
+      }
+
+      /* Tablet e celular: marca em faixa superior, formulário abaixo */
+      /* Celular e tablet: tela inteira na cor da marca; formulário em painel que sobe do rodapé */
+      @media (max-width: 899px) {
+        .modal-backdrop.login-screen {
+          background: var(--brilho-marca), var(--fundo-marca);
+        }
+
+        .login-shell {
+          display: flex;
+          flex-direction: column;
+          min-height: 100dvh;
+        }
+
+        .login-brand {
+          flex: 0 0 auto;
+          padding: calc(40px + env(safe-area-inset-top)) 24px 40px;
+          background: none;
+        }
+
+        .login-brand::before {
+          display: none;
+        }
+
+        .login-emblem {
+          width: 88px;
+        }
+
+        .login-wordmark {
+          gap: 8px;
+          margin-top: 16px;
+        }
+
+        .login-wordmark-name {
+          font-size: 28px;
+        }
+
+        .login-wordmark-sub {
+          font-size: 10px;
+          letter-spacing: 0.2em;
+        }
+
+        .login-rule {
+          width: 32px;
+          margin: 16px 0 10px;
+        }
+
+        .login-product {
+          font-size: 12px;
+          letter-spacing: 0.02em;
+          color: var(--sobre-marca-2);
+        }
+
+        .login-panel {
+          flex: 1 0 auto;
+          align-items: stretch;
+          padding: 32px 24px calc(24px + env(safe-area-inset-bottom));
+          border-radius: var(--raio-painel-login) var(--raio-painel-login) 0 0;
+          box-shadow: var(--sombra-painel-login);
+        }
+
+        .login-card {
+          max-width: 440px;
+          margin: 0 auto;
+        }
+
+        .login-title {
+          margin-top: 8px;
+          font-size: 26px;
+        }
+
+        .login-subtitle {
+          font-size: 14px;
+        }
+
+        .login-field {
+          margin-top: 20px;
+        }
+
+        /* 16px evita o zoom automático do iOS ao tocar no campo */
+        .login-field input {
+          height: 48px;
+          font-size: 16px;
+        }
+
+        .login-submit {
+          height: 48px;
+          margin-bottom: 32px;
+          font-size: 15px;
+        }
+
+        .login-note {
+          margin-top: auto;
+          padding-top: 24px;
+          border-top: none;
+          text-align: center;
+        }
+
+      }
+
+      /* Celulares mais baixos (iPhone SE e afins): marca mais compacta */
+      @media (max-width: 899px) and (max-height: 740px) {
+        .login-brand {
+          padding: calc(24px + env(safe-area-inset-top)) 24px 28px;
+        }
+
+        .login-emblem {
+          width: 68px;
+        }
+
+        .login-wordmark-name {
+          font-size: 24px;
+        }
+
+        .login-rule,
+        .login-product {
+          display: none;
+        }
+
+        .login-panel {
+          padding-top: 28px;
+        }
+
+        .login-submit {
+          margin-bottom: 20px;
+        }
+      }
+
+      /* Celular deitado ou tela muito baixa: marca em linha, sem empurrar o formulário */
+      @media (max-width: 899px) and (max-height: 600px) {
+        .login-brand {
+          padding: calc(16px + env(safe-area-inset-top)) 24px 20px;
+        }
+
+        .login-brand-inner {
+          flex-direction: row;
+          gap: 16px;
+          text-align: left;
+          max-width: none;
+        }
+
+        .login-emblem {
+          width: 56px;
+        }
+
+        .login-wordmark {
+          align-items: flex-start;
+          margin-top: 0;
+          gap: 4px;
+        }
+
+        .login-wordmark-name {
+          font-size: 22px;
+        }
+
+        .login-rule,
+        .login-product {
+          display: none;
+        }
+      }
+
+      @media (max-height: 560px) and (min-width: 900px) {
+        .login-brand,
+        .login-panel {
+          padding-top: 32px;
+          padding-bottom: 32px;
+        }
+
+        .login-emblem {
+          width: 144px;
+        }
+      }
+
+      /* ==========================================================================
+         9b. DESKTOP — painel estático na altura da janela
+         Cabeçalho, abas, filtros e paginação ficam parados; só a tabela rola.
+         Janelas baixas demais mantêm a rolagem normal da página.
+         ========================================================================== */
+      @media (min-width: 900px) and (min-height: 600px) {
+        .app-container {
+          height: 100vh;
+          height: 100dvh;
+          min-height: 0;
+          overflow: hidden;
+          padding-bottom: 16px;
+        }
+
+        .app-container > * {
+          flex-shrink: 0;
+        }
+
+        .table-container {
+          flex: 1 1 auto;
+          min-height: 0;
+          max-height: none;
+        }
+      }
+
+      /* Desktop: a tabela cabe na largura da janela — rolagem só vertical.
+         Colunas de conteúdo fixo têm largura definida; as de texto dividem o resto. */
+      @media (min-width: 900px) {
+        .pub-table {
+          table-layout: fixed;
+        }
+
+        .pub-table th {
+          white-space: normal;
+          vertical-align: bottom;
+        }
+
+        .pub-table td {
+          overflow-wrap: anywhere;
+        }
+
+        .pub-table .col-processo { width: 208px; }
+        .pub-table .col-data-disp { width: 150px; }
+        .pub-table .col-data-pub { width: 116px; }
+        .pub-table .col-status { width: 144px; }
+
+        .orgao-texto,
+        .classe-nome {
+          max-width: none;
+        }
+
+        /* Data em cima, rótulo embaixo */
+        .data-disp-box,
+        .data-pub-box {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          white-space: normal;
+        }
+
+        .data-label-sub::before {
+          content: none;
+        }
+
+        .select-status {
+          max-width: 100%;
+        }
+      }
+
+      /* ==========================================================================
+         10. TELAS ESTREITAS
+         ========================================================================== */
+      @media (max-width: 768px) {
+        .app-container {
+          padding: 12px 16px 24px;
+        }
+
+        .top-header {
+          padding: 12px 16px;
+        }
+
+        .header-title {
+          font-size: 14px;
+        }
+
+        .search-box {
+          width: 100%;
+        }
+
+        .toolbar-left {
+          width: 100%;
+        }
+      }
+
+      /* ==========================================================================
+         11. CELULAR — navegação por toque
+         A tabela vira uma lista de cartões; nada de rolagem lateral.
+         ========================================================================== */
+      @media (max-width: 760px) {
+        body {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .app-container {
+          padding: calc(8px + env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom));
+          gap: 12px;
+        }
+
+        /* Cabeçalho compacto */
+        .top-header {
+          padding: 12px;
+          gap: 10px;
+        }
+
+        .header-row {
+          gap: 10px;
+        }
+
+        .header-brand {
+          flex: 1 1 100%;
+          gap: 10px;
+        }
+
+        .header-logo {
+          width: 28px;
+          height: 28px;
+        }
+
+        .header-title {
+          font-size: 14px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .header-actions {
+          flex: 1 1 100%;
+          display: grid;
+          grid-template-columns: 1fr auto auto;
+          gap: 8px;
+        }
+
+        .btn-sync-trigger,
+        .btn-header-outline,
+        .btn-header-ghost {
+          height: 40px;
+          justify-content: center;
+          font-size: 14px;
+        }
+
+        #btn-buscar-agora {
+          order: -1;
+        }
+
+        /* Diagnóstico vira ícone; o texto continua disponível para leitores de tela */
+        #btn-abrir-diagnostico {
+          width: 40px;
+          padding: 0;
+        }
+
+        #btn-abrir-diagnostico span {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          white-space: nowrap;
+        }
+
+        #btn-abrir-diagnostico svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .header-status {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+          padding-top: 10px;
+          font-size: 12px;
+        }
+
+        /* Horário de leitura do banco é detalhe técnico; fica a coleta e a próxima automação */
+        #pill-horario-banco {
+          display: none;
+        }
+
+        #pill-horario-banco + .meta-item::before {
+          content: none;
+        }
+
+        .header-meta {
+          display: grid;
+          gap: 2px;
+        }
+
+        .meta-item + .meta-item::before {
+          content: none;
+        }
+
+        /* Abas: faixa deslizante fixa no topo ao rolar */
+        .lawyer-tabs-bar {
+          position: sticky;
+          top: 0;
+          z-index: 30;
+          margin: 0 -12px;
+          padding: 8px 0;
+          background: var(--papel);
+          border-bottom: 1px solid var(--divisoria);
+          scroll-snap-type: x proximity;
+          scrollbar-width: none;
+          -webkit-mask-image: linear-gradient(to right, var(--texto) 88%, transparent);
+          mask-image: linear-gradient(to right, var(--texto) 88%, transparent);
+        }
+
+        .lawyer-tabs-bar::-webkit-scrollbar {
+          display: none;
+        }
+
+        .lawyer-tab {
+          height: 40px;
+          padding: 0 14px;
+          scroll-snap-align: start;
+          flex-shrink: 0;
+        }
+
+        .lawyer-tab:first-child {
+          margin-left: 12px;
+        }
+
+        .lawyer-tab:last-child {
+          margin-right: 40px;
+        }
+
+        /* Filtros: busca inteira, seletores em 2 colunas */
+        .toolbar {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .toolbar-left,
+        .search-box {
+          width: 100%;
+        }
+
+        .toolbar-filters {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        .search-input,
+        .filter-select,
+        .btn-batch-remove {
+          width: 100%;
+          height: 44px;
+          font-size: 16px;
+        }
+
+        .filter-select {
+          font-size: 14px;
+          text-overflow: ellipsis;
+        }
+
+        .toolbar-right {
+          justify-content: flex-end;
+        }
+
+        .btn-batch-remove {
+          width: auto;
+          height: 36px;
+          padding: 0 4px;
+          border: none;
+          background: transparent;
+          font-size: 13px;
+          color: var(--texto-2);
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
+        /* Lista de cartões */
+        .table-container {
+          max-height: none;
+          overflow: visible;
+          border-radius: var(--raio-superficie);
+        }
+
+        .pub-table,
+        .pub-table tbody {
+          display: block;
+          width: 100%;
+        }
+
+        .pub-table thead {
+          display: none;
+        }
+
+        .pub-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-areas:
+            "trib   data"
+            "proc   proc"
+            "classe status"
+            "prov   prov";
+          column-gap: 12px;
+          row-gap: 8px;
+          padding: 14px 16px;
+          border-bottom: 1px solid var(--divisoria);
+        }
+
+        .pub-row:active {
+          background-color: var(--linha-selecionada);
+        }
+
+        .pub-table .pub-row td {
+          display: block;
+          padding: 0;
+          border: none;
+          min-width: 0;
+        }
+
+        .pub-table td.col-processo {
+          position: static;
+          background: none;
+          border: none;
+        }
+
+        .pub-table td.col-tribunal { grid-area: trib; }
+        .pub-table td.col-data-disp { grid-area: data; justify-self: end; }
+        .pub-table td.col-processo { grid-area: proc; }
+        .pub-table td.col-classe { grid-area: classe; }
+        .pub-table td.col-providencia { grid-area: prov; align-self: center; }
+        .pub-table td.col-status { grid-area: status; justify-self: end; align-self: center; }
+
+        /* Chip de advogado não empurra o status: encurta com reticências */
+        .advogados-row {
+          max-width: 100%;
+        }
+
+        .badge-adv {
+          display: inline-block;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          vertical-align: middle;
+        }
+
+        .badge-adv::before {
+          display: inline-block;
+          margin-right: 6px;
+          vertical-align: 1px;
+        }
+
+        .providencia-cell:has(.providencia-indefinida):not(:has(.obs-icon)) {
+          display: none;
+        }
+
+        /* "Publicação (fonte)" quase sempre é "Não informada": fica só na versão de computador */
+        .pub-table td.col-data-pub {
+          display: none;
+        }
+
+        .tribunal-cell {
+          flex-direction: row;
+          align-items: baseline;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .tribunal-sigla {
+          flex-shrink: 0;
+        }
+
+        .orgao-texto,
+        .classe-nome {
+          max-width: none;
+        }
+
+        .classe-cell {
+          flex-direction: row;
+          align-items: baseline;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .pub-table td.col-classe {
+          align-self: center;
+        }
+
+        .classe-nome {
+          font-size: 13px;
+          font-weight: 400;
+          color: var(--texto-2);
+        }
+
+        .comunicacao-tipo-tag {
+          flex-shrink: 0;
+        }
+
+        .data-label-sub {
+          display: none;
+        }
+
+        .num-processo {
+          font-size: 14px;
+        }
+
+        /* "A definir" é ruído no cartão; providências reais continuam visíveis */
+        .providencia-indefinida {
+          display: none;
+        }
+
+        .select-status {
+          height: 40px;
+          font-size: 13px;
+        }
+
+        /* Linha expandida ocupa o cartão inteiro */
+        .pub-table .expanded-row {
+          display: block;
+        }
+
+        .pub-table .expanded-row td {
+          display: block;
+          padding: 0 16px 16px;
+        }
+
+        .expanded-toolbar {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 12px;
+        }
+
+        .expanded-title-area {
+          gap: 4px 12px;
+        }
+
+        .expanded-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        .btn-action-icon {
+          height: 44px;
+          padding: 0 8px;
+          justify-content: center;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+
+        .expanded-content > .btn-secondary,
+        .expanded-content > .btn-danger {
+          align-self: stretch;
+          height: 44px;
+        }
+
+        .full-text-container {
+          padding: 12px;
+        }
+
+        .full-text-header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+        }
+
+        .full-text-pre {
+          max-height: 60vh;
+          font-size: 15px;
+          line-height: 1.6;
+        }
+
+        /* Paginação com botões grandes */
+        .table-pagination {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 8px;
+          text-align: center;
+        }
+
+        .pagination-controls {
+          justify-content: space-between;
+        }
+
+        .btn-page {
+          flex: 1;
+          height: 44px;
+          font-size: 14px;
+        }
+
+        .page-indicator {
+          flex: 1.2;
+          text-align: center;
+          font-size: 13px;
+        }
+
+        /* Modais como folha inferior, com teclado e área segura */
+        .modal-backdrop:not(.login-screen) {
+          align-items: flex-end;
+          padding: 0;
+        }
+
+        .modal-backdrop:not(.login-screen) .modal-dialog {
+          max-width: none;
+          max-height: 92dvh;
+          overflow-y: auto;
+          border-radius: var(--raio-painel-login) var(--raio-painel-login) 0 0;
+          padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+        }
+
+        .modal-body input,
+        .modal-body textarea {
+          height: 44px;
+          font-size: 16px;
+        }
+
+        .modal-body textarea {
+          height: auto;
+        }
+
+        .modal-footer {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .modal-footer .btn-primary,
+        .modal-footer .btn-secondary,
+        .modal-footer .btn-danger {
+          height: 44px;
+        }
+
+        .toast {
+          left: 12px;
+          right: 12px;
+          bottom: calc(16px + env(safe-area-inset-bottom));
+          text-align: center;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" class="app-container">
+      
+      <!-- 1. CABEÇALHO -->
+      <header class="top-header">
+        <div class="header-row">
+          <div class="header-brand">
+            <svg class="header-logo" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="29" height="29" rx="8"/><path d="M9.5 23 16 9l6.5 14M12 19h8"/></svg>
+            <h1 class="header-title">Adv Controller · Monitoramento de Publicações Processuais</h1>
+          </div>
+
+          <div class="header-actions">
+            <!-- Botão de Diagnóstico Administrativo -->
+            <button id="btn-abrir-diagnostico" class="btn-header-outline" title="Abrir painel de diagnóstico administrativo do sistema, banco de dados e conexão CNJ">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              <span>Diagnóstico do Sistema</span>
+            </button>
+
+            <!-- Botão Buscar Agora -->
+            <button id="btn-buscar-agora" class="btn-sync-trigger" title="Disparar consulta imediata no Diário de Justiça Eletrônico Nacional">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 21h5v-5"/>
+              </svg>
+              <span>Buscar agora</span>
+            </button>
+
+            <button id="btn-sair" class="btn-header-ghost">Sair</button>
+          </div>
+        </div>
+
+        <div class="header-status">
+          <div class="header-meta">
+            <!-- Horário de leitura do banco de dados pelo cliente -->
+            <div class="meta-item" id="pill-horario-banco" title="Momento em que esta página consultou o banco de dados">
+              <span>Carregando dados...</span>
+            </div>
+
+            <!-- Horário da última consulta realizada no DJEN pelo servidor -->
+            <div class="meta-item" id="pill-horario-djen" title="Data e hora em que o servidor consultou a API oficial do DJEN">
+              <span>Última coleta DJEN: —</span>
+            </div>
+
+            <!-- Próxima coleta automática de 24 horas -->
+            <div class="meta-item" id="pill-proxima-coleta" title="Previsão do próximo ciclo de varredura automática (a cada 24 horas)">
+              <span>Próxima automação: não verificada</span>
+            </div>
+          </div>
+
+          <!-- Contador geral de pendências -->
+          <div id="general-pending-counter" class="pending-counter" title="Publicações pendentes que exigem providência da banca">
+            <span id="pending-counter-text">Carregando contadores...</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- 2. ABAS POR ADVOGADO (geradas a partir dos dados do escritório; "Todos" é fixa) -->
+      <nav id="lawyer-tabs" class="lawyer-tabs-bar" aria-label="Filtro por Advogado Responsável">
+        <button class="lawyer-tab active" data-lawyer="todos">
+          <span>Todos os Advogados</span>
+          <span class="tab-badge" id="badge-tab-todos">0</span>
+        </button>
+      </nav>
+
+      <!-- 3. BARRA DE FERRAMENTAS -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <div class="search-box">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input
+              type="text"
+              id="search-input"
+              class="search-input"
+              placeholder="Buscar por processo, tribunal ou texto..."
+              aria-label="Buscar publicações"
+            />
+          </div>
+        </div>
+
+        <div class="toolbar-filters">
+<select id="filter-tribunal" class="filter-select" aria-label="Tribunal"><option value="">Tribunal: Todos</option></select>
+<select id="filter-archive" class="filter-select" aria-label="Arquivo"><option value="active">Ativas</option><option value="archived">Arquivadas</option></select>
+          <!-- Filtro por Status de Revisão -->
+          <select id="filter-status" class="filter-select" aria-label="Filtrar por Status">
+            <option value="todos">Status: Todos</option>
+            <option value="A revisar">Status: A revisar</option>
+            
+            <option value="Em análise">Status: Em análise</option>
+            <option value="Concluída">Status: Concluída</option>
+          </select>
+
+          <!-- Filtro por Período de Disponibilização -->
+          <select id="filter-periodo" class="filter-select" aria-label="Filtrar por Período">
+            <option value="todos">Período: Todo o histórico</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="30">Últimos 30 dias</option>
+          </select>
+        </div>
+
+        <div class="toolbar-right">
+          <!-- Ação de Remoção em Lote por Data de Corte -->
+          <button id="btn-abrir-remocao-lote" class="btn-batch-remove" title="Limpar publicações antigas por data de corte">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            <span>Arquivar por data de corte...</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4. TABELA DE PUBLICAÇÕES (CABEÇALHO FIXO + COLUNA FIXA) -->
+      <main class="table-container">
+        <table class="pub-table" id="table-publicacoes">
+          <thead>
+            <tr>
+              <th class="col-tribunal" data-sort="tribunal" title="Tribunal e Órgão Julgador">
+                <span>Tribunal / Órgão</span>
+              </th>
+              <th class="col-classe" data-sort="classe" title="Classe Processual">
+                <span>Classe / Tipo</span>
+              </th>
+              <th class="col-processo" data-sort="processo" title="Número CNJ do Processo (Coluna fixa)">
+                <span>Nº do Processo</span>
+              </th>
+              <th class="col-data-disp sorted-desc" data-sort="dataDisponibilizacao" title="Data oficial de disponibilização no Diário de Justiça">
+                <span>Disponibilização</span>
+              </th>
+              <th class="col-data-pub" data-sort="dataPublicacao" title="Data de publicação somente quando informada pela fonte">
+                <span>Publicação (fonte)</span>
+              </th>
+              <th class="col-providencia" data-sort="providencia" title="Providência jurídica a definir ou executada pela banca">
+                <span>Providência / Anotações</span>
+              </th>
+              <th class="col-status" data-sort="status" title="Status interno de controle e revisão">
+                <span>Status de Revisão</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="tbody-publicacoes">
+            <!-- Preenchido via TypeScript -->
+          </tbody>
+        </table>
+
+        <!-- Estado de lista vazia -->
+        <div id="empty-state" class="empty-state" style="display: none;">
+          <svg class="empty-state-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="29" height="29" rx="8"/><path d="M9.5 23 16 9l6.5 14M12 19h8"/></svg>
+          <p>Nenhuma publicação processual encontrada para os filtros selecionados.</p>
+        </div>
+      </main>
+
+      <!-- BARRA DE PAGINAÇÃO -->
+      <footer id="table-pagination" class="table-pagination">
+        <!-- Renderizado dinamicamente -->
+      </footer>
+
+      <!-- NOTIFICAÇÃO TOAST -->
+      <div id="toast" class="toast">Operação realizada com sucesso.</div>
+
+      <!-- =======================================================================
+           MODAL: REMOÇÃO EM LOTE POR DATA DE CORTE
+           ======================================================================= -->
+      <div id="modal-remocao-lote" class="modal-backdrop">
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <h3 class="modal-title">Arquivamento de Publicações em Lote</h3>
+            <button class="modal-close-btn" id="btn-fechar-modal-lote">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p>
+              Esta rotina arquiva todas as publicações ativas da conta disponibilizadas até a data escolhida, independentemente dos filtros da lista. Não representa vencimento de prazo.
+            </p>
+            <label for="input-data-corte-lote"><strong>Data de corte (Disponibilizadas até):</strong></label>
+            <input type="date" id="input-data-corte-lote" />
+
+            <button class="btn-secondary" id="btn-calcular-preview-lote">
+              Calcular publicações afetadas
+            </button>
+
+            <div id="box-preview-lote"></div>
+
+            <p class="text-xs text-muted">
+              O histórico será preservado. Use o filtro Arquivadas para restaurar publicações.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" id="btn-cancelar-lote">Cancelar</button>
+            <button class="btn-danger" id="btn-confirmar-remocao-lote" disabled>Confirmar Arquivamento em Lote</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- =======================================================================
+           MODAL: ANOTAÇÃO E PROVIDÊNCIA
+           ======================================================================= -->
+      <div id="modal-anotacao" class="modal-backdrop">
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <h3 class="modal-title">Anotar Providência do Processo</h3>
+            <button class="modal-close-btn" id="btn-fechar-modal-anotacao">&times;</button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="input-anotacao-pub-id" />
+            <label for="input-anotacao-providencia"><strong>O que deve ser feito (Providência):</strong></label>
+            <input type="text" id="input-anotacao-providencia" placeholder="Ex: Apresentar contestação, Interpor agravo..." />
+
+            <label for="input-anotacao-obs"><strong>Observações internas da banca:</strong></label>
+            <textarea id="input-anotacao-obs" placeholder="Ex: Cliente contatado via WhatsApp; documentos solicitados até sexta-feira..."></textarea>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" id="btn-cancelar-anotacao">Cancelar</button>
+            <button class="btn-primary" id="btn-salvar-anotacao">Salvar Anotação</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- =======================================================================
+           MODAL ADMINISTRATIVO: DIAGNÓSTICO GERAL DO SISTEMA & CONEXÃO CNJ
+           ======================================================================= -->
+      <div id="modal-diagnostico" class="modal-backdrop">
+        <div class="modal-dialog modal-dialog-large">
+          <div class="modal-header">
+            <h3 class="modal-title">Diagnóstico Administrativo do Sistema e Conexão CNJ</h3>
+            <button class="modal-close-btn" id="btn-fechar-modal-diagnostico">&times;</button>
+          </div>
+
+          <div class="modal-body" id="modal-diagnostico-body">Carregando registros reais…</div>
+
+          <div class="modal-footer" style="justify-content: space-between;">
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-secondary" id="btn-atualizar-diagnostico" title="Recarrega as informações de diagnóstico do banco de dados">
+                Atualizar
+              </button>
+            </div>
+            <button class="btn-primary" id="btn-fechar-modal-diagnostico-footer">Fechar</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Módulo TypeScript do Frontend -->
+    <div id="modal-login" class="modal-backdrop login-screen" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="login-shell">
+        <!-- Marca: emblema provisório + assinatura (substituir pela identidade visual do produto) -->
+        <aside class="login-brand">
+          <div class="login-brand-inner">
+            <svg class="login-emblem" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="29" height="29" rx="8"/><path d="M9.5 23 16 9l6.5 14M12 19h8"/></svg>
+            <p class="login-wordmark" aria-hidden="true">
+              <span class="login-wordmark-name">Adv Controller</span>
+              <span class="login-wordmark-sub">Gestão de publicações para escritórios</span>
+            </p>
+            <span class="login-rule" aria-hidden="true"></span>
+            <p class="login-product">Monitoramento de Publicações Processuais</p>
+          </div>
+        </aside>
+
+        <section class="login-panel">
+          <form id="login-form" class="login-card">
+            <span class="login-eyebrow">Área restrita</span>
+            <h2 id="login-title" class="login-title">Acesso do escritório</h2>
+            <p class="login-subtitle">Entre com sua conta autorizada.</p>
+
+            <div class="login-field">
+              <label for="login-email">E-mail</label>
+              <input id="login-email" type="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="voce@escritorio.com.br" required />
+            </div>
+            <div class="login-field">
+              <label for="login-password">Senha</label>
+              <div class="login-password">
+                <input id="login-password" type="password" autocomplete="current-password" enterkeyhint="go" required />
+                <button type="button" id="login-toggle-senha" class="login-toggle" aria-label="Mostrar senha" aria-pressed="false">
+                  <svg class="icone-olho" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icone-olho-fechado" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a17.7 17.7 0 0 1-3.2 4.2M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a10.6 10.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <p id="login-message" role="alert"></p>
+
+            <button class="btn-primary login-submit" type="submit">Entrar</button>
+
+            <p class="login-note">Acesso restrito a usuários autorizados.</p>
+          </form>
+        </section>
+      </div>
+    </div>
+ <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>
