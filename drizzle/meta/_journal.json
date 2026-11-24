@@ -22,6 +22,20 @@
       "when": 1795546211148,
       "tag": "0002_runtime_role",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795547983958,
+      "tag": "0003_publications",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795548000072,
+      "tag": "0004_publications_security",
+      "breakpoints": true
     }
   ]
 }

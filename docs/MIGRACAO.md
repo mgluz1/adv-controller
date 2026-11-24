@@ -83,8 +83,8 @@ Pontos novos do multi-escritório **(proposta)**:
 
 1. ~~Recuperar/reescrever o adaptador DJEN~~ **Feito**: `src/server/djen/client.ts` + `tests/djen-adapter.test.ts`
    (26 testes, sem rede). Falta validar contra a API real com `tests/a-migrar/probe-djen.ts`.
-2. Esquema Drizzle: usuários/sessões (Better Auth), organizações e membros, `oabs`, publicações,
-   vínculos, cursores, execuções, verificações de fonte, auditoria, termos de interesse.
+2. ~~Esquema Drizzle~~ **Feito** (migrações 0003/0004): publicações, vínculos, cursores, execuções e termos de interesse.
+   Falta só `source_checks` (diagnóstico da fonte), planejada com a tarefa 1.6.
 3. Operações da §3 com testes de isolamento entre escritórios portados dos SQL em
    `tests/a-migrar/sql-supabase/` (para Vitest/`node:test` + banco de teste Neon/branch).
 4. Better Auth no Express (`/api/auth/*`) e troca do trecho provisório em `api.ts`.

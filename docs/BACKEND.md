@@ -9,8 +9,8 @@ multi-escritório segura**. Ainda **não** há coletor DJEN, publicações nem p
 |---|---|---|
 | Configuração | `src/server/env.ts` | Validação estrita do ambiente; recusa Supabase e banco remoto sem TLS; mensagens nunca contêm senhas |
 | Conexão | `src/server/db/client.ts` | `pg.Pool` para o Neon (pooler), timeouts, erro de conexão ociosa não derruba o processo |
-| Esquema | `src/server/db/schema.ts` | 8 tabelas do Better Auth + `attorneys` (OABs) + `audit_log` |
-| Migrações | `drizzle/0000_base.sql`, `0001_tenant_security.sql`, `0002_runtime_role.sql` | Versionadas; a 2ª cria o papel `adv_app`, RLS forçado e permissões mínimas; a 3ª cria o papel de runtime `adv_runtime` (sem login nem senha na migração) |
+| Esquema | `src/server/db/schema.ts` | 8 tabelas do Better Auth + `attorneys` (OABs) + `audit_log` + publicações: `publications`, `publication_attorneys`, `sync_cursors`, `sync_runs`, `interest_terms` (ver *Esquema de publicações*) |
+| Migrações | `drizzle/0000_base.sql`, `0001_tenant_security.sql`, `0002_runtime_role.sql`, `0003_publications.sql`, `0004_publications_security.sql` | Versionadas; a 2ª cria o papel `adv_app`, RLS forçado e permissões mínimas; a 3ª cria o papel de runtime `adv_runtime` (sem login nem senha na migração) |
 | Isolamento | `src/server/db/tenant.ts` | `withTenant()`: único caminho para dados de escritório |
 | Autenticação | `src/server/auth.ts` | E-mail/senha, sessão em cookie, limite de taxa, organizações/membros/convites |
 | Permissões | `src/server/permissions.ts` | Papéis `owner · admin · member · viewer`; fonte única para Better Auth e operações |
@@ -81,7 +81,7 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    as mesmas restrições existem como `CHECK` no banco. Consultas 100% parametrizadas.
 10. **Cadastro aberto não é o padrão em produção** (`AUTH_SIGNUP_ENABLED` ausente ⇒ falso).
 
-## Testes (85 de servidor/unidade + 3 E2E; todos locais)
+## Testes (128 de servidor/unidade + 3 E2E; todos locais)
 
 Rodam contra **Postgres real em PGlite** aplicando as migrações versionadas — sem rede e sem tocar
 o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, servidor próprio sem banco).
@@ -94,6 +94,8 @@ o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, serv
 | `tests/server/production.test.ts` (4) | Cookie Secure, HSTS, limite de taxa, `X-Forwarded-For` forjado, CSRF nativo |
 | `tests/server/preflight.test.ts` (8) | Validação de destino, plano de migração, detecção de banco errado, verificação de segurança |
 | `tests/server/runtime-role.test.ts` (12) | Papel `adv_runtime`: sem acesso direto a dados de escritório, grava só o Better Auth, não herda `adv_app`, sem DDL, sem login na migração, `runtimeRoleProblems`, mutações do `verifySecurity` |
+| `tests/server/publications-schema.test.ts` (17) | Tabelas de publicações: isolamento, WITH CHECK, FK composta, deduplicação, N:N, arquivar/restaurar/tombstone, privilégios mínimos, CHECKs, cascata |
+| `tests/djen-adapter.test.ts` (26) | Adaptador DJEN (sem rede) |
 | `tests/server/unit.test.ts` (9) | Ambiente, destino do banco (Supabase/TLS), permissões, validações, aderência do esquema |
 
 Os testes de negação têm **controles positivos** (a mesma chamada, com o papel certo, funciona), e as
@@ -127,10 +129,32 @@ Por isso nenhuma migração remota foi executada. O destino é validado pelo flu
    Aplica e roda a **verificação de segurança no banco real** (papel, RLS forçado, privilégios).
 5. `npm run dev` e teste o fluxo (cadastro → escritório → OAB).
 
+## Esquema de publicações (migrações 0003 + 0004)
+
+| Tabela | Papel | `adv_app` pode |
+|---|---|---|
+| `publications` | Uma comunicação oficial por escritório, única por (escritório, `source_id`). Ciclo: ativa → arquivada (`archived_at`) → descartada (`removed_at`) | SELECT, INSERT, UPDATE (**nunca DELETE**) |
+| `publication_attorneys` | Vínculo N:N publicação↔OAB (1 linha + 2 vínculos quando atinge duas OABs) | SELECT, INSERT, **DELETE** (único DELETE de domínio: o descarte apaga os vínculos) |
+| `sync_cursors` | Checkpoint e lease com fencing, um por OAB | SELECT, INSERT, UPDATE |
+| `sync_runs` | Uma janela (dia × OAB) por linha: status, HTTP, itens, erro | SELECT, INSERT, UPDATE |
+| `interest_terms` | Termos de interesse por escritório (único sem diferenciar maiúsculas) | SELECT, INSERT, UPDATE |
+
+Garantias **no banco** (valem mesmo para um bug de aplicação): RLS forçado + política por operação em todas; chaves
+estrangeiras **compostas** `(organization_id, id)` (um vínculo entre escritórios é impossível até para quem ignora o RLS);
+**tombstone** é a mesma linha com teor, payload, nº do processo, notas, destinatários e link apagados (CHECK), só nasce de
+publicação arquivada (CHECK) e nunca volta (gatilho `publications_guard`); a identidade (escritório + ID oficial) não muda;
+não se vincula OAB a tombstone (gatilho `publication_attorneys_guard`); CHECKs de status, ID oficial, URL `http(s)`, datas e
+tamanhos. `adv_runtime` não acessa nenhuma delas diretamente.
+
+Ainda **não** existem: a função de casamento dos termos de interesse (tarefa 1.6), a tabela de sondas da fonte
+(`source_checks`, tarefa 1.6) e as operações `djen_*` (1.3). `sync_cursors` e `sync_runs` só têm o esquema; a lógica de
+claim/fencing vem com o coletor (1.4). Dados de escritório a coletar para **todos** os escritórios exigem enumerar `organization`
+(o runtime lê) e chamar `withTenant` por escritório: não há papel com visão global, de propósito.
+
 ## Estado da branch `development` do Neon (24/11/2026)
 
 Projeto `adv-controller` (`lucky-base-99617459`, sa-east-1, PostgreSQL 18). Branch `development` criada a partir de `production`,
-Neon Auth desativado nela (estava vazio) e as 3 migrações aplicadas. **A `production` continua vazia e intocada.**
+Neon Auth desativado nela (estava vazio) e as 5 migrações (0000–0004) aplicadas. **A `production` continua vazia e intocada.**
 
 - O ambiente de nuvem onde isto foi feito só alcança HTTPS: o driver `pg` (TCP 5432) não conecta. As migrações foram aplicadas
   pela API HTTPS do Neon, reproduzindo o migrador do Drizzle (mesmos SQL e mesmos hashes em `drizzle.__drizzle_migrations`).

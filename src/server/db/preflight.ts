@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { getTableName, is } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as schema from "./schema.ts";
+import { TENANT_TABLES } from "./schema.ts";
 
 export type Query = (sql: string) => Promise<Record<string, any>[]>;
 
@@ -136,7 +137,7 @@ export async function verifySecurity(q: Query): Promise<Check[]> {
   });
   const [canSet] = await q("select pg_has_role(current_user, 'adv_app', 'MEMBER') as ok");
   checks.push({ name: "o papel de conexão pode assumir adv_app (SET ROLE)", ok: !!canSet?.ok });
-  for (const t of ["attorneys", "audit_log"]) {
+  for (const t of TENANT_TABLES) {
     const [r] = await q(
       `select c.relrowsecurity as rls, c.relforcerowsecurity as forced,
               (select count(*)::int from pg_policy p where p.polrelid = c.oid) as policies
@@ -161,6 +162,11 @@ export async function verifySecurity(q: Query): Promise<Check[]> {
             has_table_privilege('adv_app', 'public.audit_log', 'DELETE') as c`,
   );
   checks.push({ name: "adv_app não exclui OABs nem altera/exclui auditoria", ok: !del.a && !del.b && !del.c });
+  // Só o vínculo publicação↔OAB pode ser apagado (no descarte); publicações viram tombstone, nunca DELETE.
+  const deletable = TENANT_TABLES.filter((t) => t !== "publication_attorneys").map((t) => `has_table_privilege('adv_app', 'public.${t}', 'DELETE')`);
+  const [del2] = await q(`select (${deletable.join(" or ")}) as any_delete,
+       has_table_privilege('adv_app', 'public.publication_attorneys', 'DELETE') as links`);
+  checks.push({ name: "adv_app só apaga vínculos publicação↔OAB (nenhuma outra tabela de domínio)", ok: del2.any_delete === false && del2.links === true });
 
   // Papel de runtime (migração 0002): sem privilégios especiais, sem acesso direto a dados de escritório.
   const [rt] = await q(
@@ -175,8 +181,7 @@ export async function verifySecurity(q: Query): Promise<Check[]> {
        (pg_has_role('adv_runtime', 'adv_app', 'SET')) as can_set,
        (pg_has_role('adv_runtime', 'adv_app', 'USAGE')) as inherits,
        (select count(*)::int from pg_tables where schemaname = 'public' and tableowner = 'adv_runtime') as owned,
-       (has_table_privilege('adv_runtime', 'public.attorneys', 'SELECT,INSERT,UPDATE,DELETE')
-         or has_table_privilege('adv_runtime', 'public.audit_log', 'SELECT,INSERT,UPDATE,DELETE')) as direct`,
+       (${TENANT_TABLES.map((t) => `has_table_privilege('adv_runtime', 'public.${t}', 'SELECT,INSERT,UPDATE,DELETE')`).join(" or ")}) as direct`,
   );
   checks.push({
     name: "adv_runtime assume adv_app só via SET ROLE (sem herdar), não é dono de tabelas e não acessa dados de escritório direto",
@@ -195,8 +200,7 @@ export async function runtimeRoleProblems(q: Query): Promise<string[]> {
   const [r] = await q(
     `select current_user as usr, r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb,
             (select count(*)::int from pg_tables where schemaname = 'public' and tableowner = current_user) as owned,
-            (to_regclass('public.attorneys') is not null
-              and has_table_privilege(current_user, 'public.attorneys', 'SELECT')) as direct_read,
+            (${TENANT_TABLES.map((t) => `(to_regclass('public.${t}') is not null and has_table_privilege(current_user, 'public.${t}', 'SELECT'))`).join(" or ")}) as direct_read,
             pg_has_role(current_user, 'adv_app', 'SET') as can_set
        from pg_roles r where r.rolname = current_user`,
   );

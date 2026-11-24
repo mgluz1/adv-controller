@@ -26,7 +26,8 @@ ainda); a assinatura mensal é o alvo e ainda não foi implementada.
 | Servidor (`server.ts`, `src/server/`) | Express + Better Auth + Drizzle/Neon: login, escritórios, membros, papéis, OABs, auditoria |
 | Banco (`drizzle/`) | Migrações versionadas, RLS forçado, papel de aplicação sem privilégios de dono |
 | Adaptador DJEN (`src/server/djen/client.ts`) | Pronto e testado sem rede (26 testes); **ainda não validado contra a API real** |
-| Publicações, coletor/agendador, assinaturas | **Não implementados** |
+| Esquema de publicações (`publications`, vínculos, cursores, execuções, termos) | Pronto, com RLS e testado; aplicado na branch `development` do Neon |
+| Operações `djen_*`, coletor/agendador, assinaturas | **Não implementados** |
 
 ## Rodando localmente
 
