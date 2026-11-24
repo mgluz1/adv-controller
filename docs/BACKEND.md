@@ -29,11 +29,31 @@ Mantém `POST /api/v1/<operacao>` do [MIGRACAO.md](MIGRACAO.md) §3. Erros: `{ "
 | `oab_create` `{name,oab_number,uf}` | `attorney:create` | `{ oab }` · 409 se a OAB já existe no escritório |
 | `oab_update` `{id,name?,active?}` | `attorney:update` | `{ oab }` · 404 também para OAB de outro escritório · **nunca exclui** (desativa) |
 | `audit_list` | `audit:read` | `{ eventos[] }` (últimos 100) |
-| `djen_list`, `djen_mutate`, `djen_archive_preview`, `djen_sync_manual`, `djen_diagnostics` | login + escritório | **501** “próxima fase” (contrato preservado; sem simular dados) |
+| `djen_list` `{p_filter}` | `publication:read` | `{ total, rows[], stats, attorney_stats[], tab_stats, tribunals[], pending_windows, latest, last_success, next_due }` (ver *Publicações*) |
+| `djen_mutate` `{p_action, p_ids, p_status?, p_notes?, p_providence?}` | `review` · `archive` · `restore` · `discard` conforme a ação | **número** de publicações afetadas (a UI exige `1` nas ações individuais) |
+| `djen_archive_preview` `{p_date}` | `publication:archive` | `{ count, rows[{source_id, process_number, tribunal}] }` (até 1.000 linhas; `count` exato) |
+| `djen_sync_manual`, `djen_diagnostics` | login + escritório | **501** “próxima fase” (coletor; sem simular dados) |
 
 Gestão de membros, convites e do escritório usa os endpoints nativos `/api/auth/organization/*`
 (criar escritório, `invite-member`, `accept-invitation`, `update-member-role`, `remove-member`,
 `set-active`, `leave`, `update`, `delete`, `get-full-organization`), já sujeitos à matriz de papéis.
+
+### Publicações (`src/server/routes/publications.ts`)
+
+- **Identificadores:** `p_ids` são os **IDs oficiais da fonte** (`source_id`), como a interface já envia; aceita número ou texto
+  (`^[1-9][0-9]{0,17}$`), sem repetição, até 1.000 por chamada. IDs de outro escritório simplesmente não casam (resultado `0`).
+- **Autenticação antes de validação:** anônimo sempre recebe 401, mesmo com corpo inválido.
+- **`djen_mutate`:** `status` (também `p_notes`/`p_providence`: ausente = mantém; texto vazio = limpa) vale para ativas e
+  arquivadas; `archive` só de ativas; `restore` só de arquivadas; `remove` (descarte/tombstone) **só de arquivadas** e apaga
+  conteúdo e vínculos na mesma transação. Descartada não aceita mais nenhuma operação (`0`). Cada escrita com efeito grava **um**
+  evento de auditoria com o autor, a contagem e os `source_id`; **nunca** o teor nem o texto das anotações.
+- **Contagens (decisão):** `rows`/`total` obedecem a todos os filtros. `tab_stats` (contadores das abas, “N para atuar (M total)”)
+  usa os mesmos filtros **exceto aba e status**: não depende da aba ativa, da página nem do filtro de status. `stats` (cabeçalho)
+  usa todos os filtros exceto status. Uma comunicação ligada a duas OABs conta **uma vez** em `todos` e uma em cada aba.
+  Abas = OABs ativas + inativas que ainda têm publicações vivas. Descartadas não aparecem em lugar nenhum.
+- **Busca:** texto literal (curingas `%`/`_` escapados) em nº do processo, tribunal e teor, sem diferenciar maiúsculas.
+- **Fora desta tarefa:** aba/contador de “termos de interesse” (`attorney: "interesse"` responde 400 até a tarefa 1.6) e a coleta
+  (`latest`, `last_success`, `next_due` e `pending_windows` vêm de `sync_runs`/`sync_cursors` e hoje são nulos/0).
 
 ### Papéis
 
@@ -81,7 +101,7 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    as mesmas restrições existem como `CHECK` no banco. Consultas 100% parametrizadas.
 10. **Cadastro aberto não é o padrão em produção** (`AUTH_SIGNUP_ENABLED` ausente ⇒ falso).
 
-## Testes (128 de servidor/unidade + 3 E2E; todos locais)
+## Testes (146 de servidor/unidade + 3 E2E; todos locais)
 
 Rodam contra **Postgres real em PGlite** aplicando as migrações versionadas — sem rede e sem tocar
 o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, servidor próprio sem banco).
@@ -95,6 +115,7 @@ o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, serv
 | `tests/server/preflight.test.ts` (8) | Validação de destino, plano de migração, detecção de banco errado, verificação de segurança |
 | `tests/server/runtime-role.test.ts` (12) | Papel `adv_runtime`: sem acesso direto a dados de escritório, grava só o Better Auth, não herda `adv_app`, sem DDL, sem login na migração, `runtimeRoleProblems`, mutações do `verifySecurity` |
 | `tests/server/publications-schema.test.ts` (17) | Tabelas de publicações: isolamento, WITH CHECK, FK composta, deduplicação, N:N, arquivar/restaurar/tombstone, privilégios mínimos, CHECKs, cascata |
+| `tests/server/publications-api.test.ts` (18) | `djen_list`/`djen_mutate`/`djen_archive_preview`: papéis, filtros, contadores, isolamento, ciclo arquivar/restaurar/descartar, lote por IDs exatos, auditoria, validação |
 | `tests/djen-adapter.test.ts` (26) | Adaptador DJEN (sem rede) |
 | `tests/server/unit.test.ts` (9) | Ambiente, destino do banco (Supabase/TLS), permissões, validações, aderência do esquema |
 
@@ -146,8 +167,8 @@ publicação arquivada (CHECK) e nunca volta (gatilho `publications_guard`); a i
 não se vincula OAB a tombstone (gatilho `publication_attorneys_guard`); CHECKs de status, ID oficial, URL `http(s)`, datas e
 tamanhos. `adv_runtime` não acessa nenhuma delas diretamente.
 
-Ainda **não** existem: a função de casamento dos termos de interesse (tarefa 1.6), a tabela de sondas da fonte
-(`source_checks`, tarefa 1.6) e as operações `djen_*` (1.3). `sync_cursors` e `sync_runs` só têm o esquema; a lógica de
+Ainda **não** existem: a função de casamento dos termos de interesse (tarefa 1.6) e a tabela de sondas da fonte
+(`source_checks`, tarefa 1.6). As operações `djen_list/mutate/archive_preview` existem (tarefa 1.3). `sync_cursors` e `sync_runs` só têm o esquema; a lógica de
 claim/fencing vem com o coletor (1.4). Dados de escritório a coletar para **todos** os escritórios exigem enumerar `organization`
 (o runtime lê) e chamar `withTenant` por escritório: não há papel com visão global, de propósito.
 
@@ -187,8 +208,8 @@ Neon Auth desativado nela (estava vazio) e as 5 migrações (0000–0004) aplica
 
 ## Pendências (fora desta fase)
 
-- Esquema e operações de **publicações** (`djen_list`, `djen_mutate`, lote, diagnóstico) e o **coletor DJEN**
-  (regras em [REGRAS_DE_NEGOCIO.md](REGRAS_DE_NEGOCIO.md)); termos de interesse por escritório.
+- **Coletor DJEN** e agendador (regras em [REGRAS_DE_NEGOCIO.md](REGRAS_DE_NEGOCIO.md)), `djen_sync_manual`, `djen_diagnostics`; termos
+  de interesse (casamento + aba).
 - **Pagamento/assinatura** (estado do escritório: trial, ativo, em atraso, cancelado).
 - E-mail transacional (verificação, recuperação de senha, convites).
 - **Interface** de onboarding (criar escritório), gestão de membros/OABs e seleção de escritório: o

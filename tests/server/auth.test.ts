@@ -89,7 +89,7 @@ test("operações futuras (publicações/coleta) exigem login e respondem 501 co
   const c = be.client();
   await c.signUp(email("f"));
   await c.createOffice("Escritório F", `f-${Date.now()}`);
-  assert.equal((await c.v1("djen_list")).status, 501);
+  assert.equal((await c.v1("djen_diagnostics")).status, 501);
   assert.equal((await c.v1("djen_sync_manual")).status, 501);
 });
 

@@ -11,20 +11,15 @@ import {
 } from "../domain/oab.ts";
 import { permissionsOf } from "../permissions.ts";
 import { HttpError, getSession, requireContext, resolveMembership, type Deps } from "./context.ts";
+import { publicationOps } from "./publications.ts";
 
 /**
  * Contrato do painel: `POST /api/v1/<operacao>` (ver src/client/transport.ts e docs/MIGRACAO.md §3).
  * `organization_id` NUNCA é aceito do cliente: o escritório vem da sessão + associação revalidada.
  */
 
-/** Operações do contrato que dependem de fases futuras (publicações e coleta DJEN). */
-const NEXT_PHASE = new Set([
-  "djen_list",
-  "djen_mutate",
-  "djen_archive_preview",
-  "djen_sync_manual",
-  "djen_diagnostics",
-]);
+/** Operações do contrato que dependem de fases futuras (coletor DJEN). */
+const NEXT_PHASE = new Set(["djen_sync_manual", "djen_diagnostics"]);
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -167,6 +162,9 @@ const ops: Record<string, Op> = {
     return { oab: present(row) };
   },
 
+  // ── Publicações (djen_list, djen_mutate, djen_archive_preview) ─────────────────────
+  ...publicationOps,
+
   // ── Auditoria ───────────────────────────────────────────────────────────────
   async audit_list(deps, req) {
     const c = await requireContext(deps, req, ["audit", "read"]);
@@ -210,7 +208,7 @@ export function createV1Router(deps: Deps) {
       if (NEXT_PHASE.has(name)) {
         // Autentica antes de responder: nem o estado "não implementado" é exposto a anônimos.
         await requireContext(deps, req);
-        throw new HttpError(501, "Disponível na próxima fase (publicações e coletor DJEN).");
+        throw new HttpError(501, "Disponível na próxima fase (coletor DJEN).");
       }
       throw new HttpError(404, "Operação desconhecida.");
     } catch (e) {
