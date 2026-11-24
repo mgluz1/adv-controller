@@ -59,7 +59,7 @@ A fixture executável do contrato está em `tests/browser/ui.spec.ts` e `tests/a
 | `djen_list` ✅ | `{ p_filter: { attorney, status, search, start, end, order, limit, offset, tribunal, archived } }` — `attorney` = `"todos"` \| id do advogado \| `"interesse"`; `status` = `todos`\|`a_revisar`\|`em_analise`\|`concluida` | `{ total, rows[], stats{total,revisar,analise,concluida}, attorney_stats[{id,name,oab_number,uf,total,revisar}], tab_stats{todos,<id>…,interesse?}{total,revisar}, tribunals[{tribunal}], pending_windows, latest, last_success, next_due }` — `rows[]`: ver os campos mapeados em `api.ts` |
 | `djen_mutate` ✅ | `{ p_action: "status"\|"archive"\|"restore"\|"remove", p_ids: string[], p_status?, p_notes?, p_providence? }` | número de registros afetados (a UI exige `1` nas ações individuais) |
 | `djen_archive_preview` ✅ | `{ p_date }` | `{ count, rows[{source_id, process_number, tribunal}] }` (máx. 1.000 linhas) |
-| `djen_sync_manual` (501) | — | `{ sucesso, mensagem?, erro? }` (limite: 1 a cada 5 min por escritório) |
+| `djen_sync_manual` ✅ | — | `{ sucesso, mensagem?, erro? }` (limite: 1 a cada 5 min por escritório) |
 | `djen_diagnostics` (501) | — | `{ latest, last_success, next_due, pending_windows, runs[20], source_check }` |
 
 Diferenças deliberadas em relação ao sistema de origem: `attorney_stats` agora traz `id` e `name`
@@ -86,9 +86,9 @@ Pontos novos do multi-escritório **(proposta)**:
 2. ~~Esquema Drizzle~~ **Feito** (migrações 0003/0004): publicações, vínculos, cursores, execuções e termos de interesse.
    Falta só `source_checks` (diagnóstico da fonte), planejada com a tarefa 1.6.
 3. ~~Operações da §3~~ **`djen_list`/`djen_mutate`/`djen_archive_preview` feitas** (com os cenários de isolamento, deduplicação,
-   N:N, arquivar/restaurar/tombstone e lote portados). Faltam `djen_sync_manual` e `djen_diagnostics` (1.5/1.6).
+   N:N, arquivar/restaurar/tombstone e lote portados). Falta `djen_diagnostics` (1.6); `djen_sync_manual` está pronta (1.5).
 4. Better Auth no Express (`/api/auth/*`) e troca do trecho provisório em `api.ts`.
-5. ~~Serviço de coleta~~ **Feito** (`src/server/collector/`, tarefa 1.4). Falta o **agendador** (1.5).
+5. ~~Serviço de coleta~~ **Feito** (`src/server/collector/`, tarefa 1.4). O **agendador** também está pronto (1.5).
 6. Onboarding de escritório, cadastro de OABs e termos de interesse (hoje inexistentes).
 7. Assinatura mensal: **nada existe no código** (não há o que remover); definir provedor e ciclo
    de vida (trial, atraso, cancelamento) antes do esquema de organizações.

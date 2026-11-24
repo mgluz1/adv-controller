@@ -4,7 +4,10 @@ import { config } from "dotenv";
 import { createApp } from "./src/server/app.ts";
 import { createAuth } from "./src/server/auth.ts";
 import { connect, type Connection } from "./src/server/db/client.ts";
+import { createCollector } from "./src/server/collector/collector.ts";
+import { createScheduler } from "./src/server/collector/scheduler.ts";
 import { runtimeRoleProblems } from "./src/server/db/preflight.ts";
+import { collectDay } from "./src/server/djen/client.ts";
 import { assertSafeDatabaseUrl, missingBackendVars, parseEnv } from "./src/server/env.ts";
 
 config({ path: [".env.local", ".env"], quiet: true });
@@ -13,6 +16,7 @@ const missing = missingBackendVars(env);
 
 let conn: Connection | undefined;
 let app: express.Express;
+let scheduler: ReturnType<typeof createScheduler> | undefined;
 
 if (missing.length === 0) {
   conn = connect(env.databaseUrl!);
@@ -30,7 +34,23 @@ if (missing.length === 0) {
     }
     console.warn("[segurança] Em desenvolvimento isto é apenas um aviso. Em produção seria fatal.");
   }
-  app = createApp({ auth: createAuth({ db: conn.db, env }), db: conn.db, env });
+  // Coletor DJEN: só neste processo se COLLECTOR_ENABLED=true (ligue em UMA instância; ver docs/BACKEND.md).
+  if (env.collectorEnabled) {
+    const collector = createCollector({
+      db: conn.db,
+      collect: (attorney, day) => collectDay(attorney, day, { baseUrl: env.djenBaseUrl }),
+    });
+    scheduler = createScheduler({ collector, minIntervalMs: env.collectorMinIntervalMs });
+    console.log(`Coletor DJEN: ligado (uma janela a cada ${env.collectorMinIntervalMs / 1000} s, no mínimo).`);
+  } else {
+    console.log("Coletor DJEN: desligado neste processo (COLLECTOR_ENABLED != true).");
+  }
+  app = createApp({
+    auth: createAuth({ db: conn.db, env }),
+    db: conn.db,
+    env,
+    scheduler: { enabled: !!scheduler, wake: (org) => scheduler?.wake(org) },
+  });
 } else if (env.nodeEnv === "production") {
   console.error(`Configuração ausente em produção: ${missing.join(", ")}`);
   process.exit(1);
@@ -63,12 +83,17 @@ if (env.nodeEnv === "production") {
   app.use(vite.middlewares);
 }
 
-const server = app.listen(env.port, "127.0.0.1", () =>
-  console.log(`Adv Controller: http://127.0.0.1:${env.port}`),
-);
+const server = app.listen(env.port, "127.0.0.1", () => {
+  console.log(`Adv Controller: http://127.0.0.1:${env.port}`);
+  scheduler?.start();
+});
 
 for (const sig of ["SIGINT", "SIGTERM"] as const)
   process.once(sig, () => {
-    server.close(() => void conn?.close().finally(() => process.exit(0)));
-    setTimeout(() => process.exit(1), 10_000).unref();
+    // Para o coletor primeiro (espera a janela em andamento), depois o HTTP e por último o banco.
+    void (async () => {
+      await scheduler?.stop(30_000);
+      server.close(() => void conn?.close().finally(() => process.exit(0)));
+    })();
+    setTimeout(() => process.exit(1), 45_000).unref();
   });

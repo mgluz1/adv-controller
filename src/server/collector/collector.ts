@@ -47,11 +47,12 @@ export interface Claim {
   runId: string;
 }
 
+/** `startedAt` = instante em que a chamada de rede à fonte COMEÇOU (é dele que o agendador conta o ritmo). */
 export type Outcome =
   | { status: "idle" }
-  | { status: "success"; claim: Claim; found: number; inserted: number; pages: number }
-  | { status: "failed"; claim: Claim; kind: FailureKind | "INTERNAL"; message: string; retryAt: Date }
-  | { status: "stale"; claim: Claim };
+  | { status: "success"; claim: Claim; found: number; inserted: number; pages: number; startedAt?: Date }
+  | { status: "failed"; claim: Claim; kind: FailureKind | "INTERNAL"; message: string; retryAt: Date; startedAt?: Date }
+  | { status: "stale"; claim: Claim; startedAt?: Date };
 
 export const DEFAULT_LEASE_MS = 5 * 60_000;
 const CHUNK = 200;
@@ -121,6 +122,28 @@ export async function claimWindow(db: Db, organizationId: string, now: Date, lea
       .returning({ id: schema.syncRuns.id });
 
     return { organizationId, attorneyId: row.attorney_id, oabNumber: row.oab_number, uf: row.uf, day: scan!, target: target!, leaseId, runId: run.id };
+  });
+}
+
+/**
+ * Quando o escritório pode ter trabalho de novo (ou null se não tem OAB ativa): o menor entre o vencimento dos cursores,
+ * o fim de um lease ativo e "agora" para OAB ativa ainda sem cursor. Só serve para o coletor não reconsultar à toa.
+ */
+export async function nextWake(db: Db, organizationId: string, now: Date): Promise<Date | null> {
+  return withTenant(db, organizationId, async (tx) => {
+    const at = iso(now);
+    const r = await tx.execute(sql`
+      select to_char(min(due) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as due
+        from (
+          select case
+                   when c.attorney_id is null then ${at}::timestamptz
+                   when c.lease_id is not null and c.lease_until > ${at}::timestamptz then c.lease_until
+                   else coalesce(c.next_due_at, ${at}::timestamptz)
+                 end as due
+            from attorneys a left join sync_cursors c on c.attorney_id = a.id
+           where a.active) x`);
+    const due = (r.rows[0] as { due: string | null } | undefined)?.due;
+    return due ? new Date(due) : null;
   });
 }
 
@@ -225,12 +248,17 @@ export interface CollectorOptions {
   log?: (message: string) => void;
 }
 
+/** Um escritório ocioso é reconsultado, no máximo, a cada 5 min (pega mudanças feitas por outra instância). */
+export const HINT_MAX_MS = 5 * 60_000;
+
 export function createCollector(options: CollectorOptions) {
   const { db } = options;
   const collect = options.collect ?? collectDay;
   const now = options.now ?? (() => new Date());
   const log = options.log ?? ((m: string) => console.error(`[coletor] ${m}`));
   let lastOrg: string | undefined;
+  /** escritório → instante (ms) até o qual NÃO vale reconsultar: evita uma consulta por escritório a cada janela. */
+  const hints = new Map<string, number>();
 
   async function listOrganizations(): Promise<string[]> {
     if (options.organizationIds) return options.organizationIds();
@@ -246,6 +274,7 @@ export function createCollector(options: CollectorOptions) {
 
   async function execute(claim: Claim): Promise<Outcome> {
     let result: DayResult;
+    const startedAt = now();
     try {
       result = await collect({ oab_number: claim.oabNumber, uf: claim.uf }, claim.day);
     } catch (e) {
@@ -254,32 +283,52 @@ export function createCollector(options: CollectorOptions) {
       const message = known ? e.message : "Erro inesperado na coleta.";
       if (!known) log(`erro inesperado na coleta (${claim.attorneyId} ${claim.day}): ${(e as Error)?.message}`);
       const { retryAt } = await failWindow(db, claim, { kind, message, httpStatus: known ? e.status : undefined, retryAfter: known ? e.retryAfter : undefined }, now());
-      return { status: "failed", claim, kind, message, retryAt };
+      return { status: "failed", claim, kind, message, retryAt, startedAt };
     }
     try {
       const done = await commitWindow(db, claim, result, now());
-      return { status: "success", claim, found: done.found, inserted: done.inserted, pages: result.pages };
+      return { status: "success", claim, found: done.found, inserted: done.inserted, pages: result.pages, startedAt };
     } catch (e) {
-      if (e instanceof StaleLeaseError) return { status: "stale", claim };
+      if (e instanceof StaleLeaseError) return { status: "stale", claim, startedAt };
       log(`erro ao gravar a janela (${claim.attorneyId} ${claim.day}): ${(e as Error)?.message}`);
       const message = "Falha ao gravar a janela; ela será repetida.";
       const { retryAt } = await failWindow(db, claim, { kind: "INTERNAL", message }, now()).catch(() => ({ retryAt: now() }));
-      return { status: "failed", claim, kind: "INTERNAL", message, retryAt };
+      return { status: "failed", claim, kind: "INTERNAL", message, retryAt, startedAt };
     }
   }
 
   return {
     /** Coleta no máximo UMA janela (a mais antiga vencida do próximo escritório com trabalho). */
     async collectNext(): Promise<Outcome> {
-      const orgs = rotate(await listOrganizations());
-      for (const org of orgs) {
-        const claim = await claimWindow(db, org, now(), options.leaseMs);
+      const all = await listOrganizations();
+      const known = new Set(all);
+      for (const k of hints.keys()) if (!known.has(k)) hints.delete(k); // escritório excluído
+      for (const org of rotate(all)) {
+        const at = now();
+        if ((hints.get(org) ?? 0) > at.getTime()) continue; // sem trabalho até lá
+        const claim = await claimWindow(db, org, at, options.leaseMs);
         if (claim) {
+          hints.delete(org); // há trabalho: reavaliar logo depois (continuação do ciclo)
           lastOrg = org;
           return execute(claim);
         }
+        const due = await nextWake(db, org, at).catch(() => null);
+        hints.set(org, Math.min(due ? due.getTime() : Infinity, at.getTime() + HINT_MAX_MS));
       }
       return { status: "idle" };
+    },
+
+    /** Há trabalho novo (OAB criada/reativada, coleta manual): esquece a dica e reavalia na próxima chamada. */
+    wake(organizationId?: string) {
+      if (organizationId) hints.delete(organizationId);
+      else hints.clear();
+    },
+
+    /** Menor instante em que algum escritório volta a ter trabalho (null se ainda não avaliou nenhum). */
+    nextWakeAt(): Date | null {
+      let min = Infinity;
+      for (const v of hints.values()) min = Math.min(min, v);
+      return Number.isFinite(min) ? new Date(min) : null;
     },
   };
 }

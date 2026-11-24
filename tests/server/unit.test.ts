@@ -134,3 +134,17 @@ test("normalização de OAB, UF e nome", () => {
   assert.equal(assertUuid("AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   assert.throws(() => assertUuid("1; drop table x"), ValidationError);
 });
+
+// ───────── configuração do coletor ─────────
+test("parseEnv: coletor desligado por padrão, intervalo seguro e base do DJEN validada", () => {
+  const d = parseEnv({});
+  assert.deepEqual([d.collectorEnabled, d.collectorMinIntervalMs, d.djenBaseUrl], [false, 4000, undefined], "padrão: desligado (dev nunca consulta o CNJ por engano)");
+  assert.equal(parseEnv({ COLLECTOR_ENABLED: "true" }).collectorEnabled, true);
+  assert.equal(parseEnv({ COLLECTOR_ENABLED: "false" }).collectorEnabled, false);
+  assert.equal(parseEnv({ COLLECTOR_ENABLED: "" }).collectorEnabled, false);
+  assert.throws(() => parseEnv({ COLLECTOR_ENABLED: "sim" }), ConfigError);
+  assert.equal(parseEnv({ COLLECTOR_MIN_INTERVAL_MS: "2000" }).collectorMinIntervalMs, 2000);
+  for (const bad of ["1999", "100", "0", "-1", "abc", "4000.5", "600001"]) assert.throws(() => parseEnv({ COLLECTOR_MIN_INTERVAL_MS: bad }), ConfigError, bad);
+  assert.equal(parseEnv({ DJEN_BASE_URL: "https://exemplo.test/api/v1/" }).djenBaseUrl, "https://exemplo.test/api/v1");
+  for (const bad of ["http://exemplo.test", "ftp://x.test", "não é url", "https://u:p@x.test/"]) assert.throws(() => parseEnv({ DJEN_BASE_URL: bad }), ConfigError, bad);
+});

@@ -15,10 +15,19 @@ export class HttpError extends Error {
   }
 }
 
+/** O que as rotas precisam saber do agendador (o resto é detalhe do servidor). */
+export interface SchedulerHandle {
+  /** O coletor roda NESTE processo? */
+  enabled: boolean;
+  /** Avisa que o escritório tem trabalho novo (OAB criada/reativada, coleta manual): acorda o laço. */
+  wake(organizationId?: string): void;
+}
+
 export interface Deps {
   auth: Auth;
   db: Db;
   env: import("../env.ts").Env;
+  scheduler?: SchedulerHandle;
 }
 
 export interface Context {

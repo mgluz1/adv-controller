@@ -12,6 +12,7 @@ import {
 import { permissionsOf } from "../permissions.ts";
 import { HttpError, getSession, requireContext, resolveMembership, type Deps } from "./context.ts";
 import { publicationOps } from "./publications.ts";
+import { syncOps } from "./sync.ts";
 
 /**
  * Contrato do painel: `POST /api/v1/<operacao>` (ver src/client/transport.ts e docs/MIGRACAO.md §3).
@@ -19,7 +20,7 @@ import { publicationOps } from "./publications.ts";
  */
 
 /** Operações do contrato que dependem de fases futuras (coletor DJEN). */
-const NEXT_PHASE = new Set(["djen_sync_manual", "djen_diagnostics"]);
+const NEXT_PHASE = new Set(["djen_diagnostics"]);
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -118,6 +119,7 @@ const ops: Record<string, Op> = {
         });
         return created;
       });
+      deps.scheduler?.wake(c.organizationId); // a primeira carga (30 dias) começa já
       return { oab: present(row) };
     } catch (e) {
       if (errCode(e) === "23505") throw new HttpError(409, "Esta OAB já está cadastrada no escritório.");
@@ -159,11 +161,13 @@ const ops: Record<string, Op> = {
     });
     // Outro escritório (ou id inexistente) é indistinguível: sempre 404.
     if (!row) throw new HttpError(404, "OAB não encontrada.");
+    if (patch.active === true) deps.scheduler?.wake(c.organizationId); // reativada: volta à fila
     return { oab: present(row) };
   },
 
   // ── Publicações (djen_list, djen_mutate, djen_archive_preview) ─────────────────────
   ...publicationOps,
+  ...syncOps,
 
   // ── Auditoria ───────────────────────────────────────────────────────────────
   async audit_list(deps, req) {

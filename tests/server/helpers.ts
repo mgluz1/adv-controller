@@ -113,11 +113,14 @@ export interface Backend {
   close: () => Promise<void>;
 }
 
-export async function startBackend(envOverrides: Record<string, string> = {}): Promise<Backend> {
+export async function startBackend(
+  envOverrides: Record<string, string> = {},
+  extraDeps: { scheduler?: import("../../src/server/routes/context.ts").SchedulerHandle } = {},
+): Promise<Backend> {
   const { db, raw, client: pg } = await createTestDb();
   const env = testEnv(envOverrides);
   const auth = createAuth({ db, env });
-  const app = createApp({ auth, db, env });
+  const app = createApp({ auth, db, env, ...extraDeps });
   const server: Server = await new Promise((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });

@@ -500,6 +500,8 @@ test("OAB inativa não é coletada; reativada, volta a ser; escritório sem OABs
   assert.equal((await c.collectNext()).status, "idle");
   assert.equal(d.calls.length, 0);
   await t.client.exec(`update attorneys set active = true where id = '${att}'`);
+  assert.equal((await c.collectNext()).status, "idle", "a dica do escritório ocioso ainda vale");
+  c.wake(org); // é o que as rotas fazem ao criar/reativar uma OAB
   assert.equal((await c.collectNext()).status, "success");
 });
 
@@ -552,4 +554,72 @@ test("o coletor só enxerga dados do escritório que está atendendo (RLS): curs
   const stillA = (await t.raw.select().from(schema.syncCursors).where(eq(schema.syncCursors.attorneyId, cA.attorneyId)))[0];
   assert.equal(stillA.leaseId, cA.leaseId, "o cursor de A não foi tocado");
   void sql;
+});
+
+// ── Dicas por escritório (não reconsultar escritório ocioso a cada janela) ─────
+
+import { HINT_MAX_MS, nextWake } from "../../src/server/collector/collector.ts";
+
+test("nextWake: sem OAB ativa = null; OAB ativa sem cursor = agora; vencimento futuro; lease ativo; inativas ignoradas", async () => {
+  const org = await mkOrg("wake");
+  assert.equal(await nextWake(t.db, org, now()), null, "sem OAB ativa");
+  const inactive = await mkAtt(org, "811", "GO", false);
+  assert.equal(await nextWake(t.db, org, now()), null, "inativa não conta");
+  const a1 = await mkAtt(org, "812");
+  assert.equal((await nextWake(t.db, org, now()))!.toISOString(), T0.toISOString(), "ativa sem cursor: já pode ter trabalho");
+  await t.raw.insert(schema.syncCursors).values({ organizationId: org, attorneyId: a1, nextDueAt: new Date(T0.getTime() + 2 * 3600_000) });
+  assert.equal((await nextWake(t.db, org, now()))!.toISOString(), new Date(T0.getTime() + 2 * 3600_000).toISOString());
+  await t.raw.insert(schema.syncCursors).values({ organizationId: org, attorneyId: inactive, nextDueAt: new Date(T0.getTime() + 60_000) });
+  assert.equal((await nextWake(t.db, org, now()))!.getTime(), T0.getTime() + 2 * 3600_000, "cursor de OAB inativa não puxa o vencimento");
+  await t.client.exec(`update sync_cursors set lease_id = gen_random_uuid(), lease_until = '${new Date(T0.getTime() + 5 * 60_000).toISOString()}' where attorney_id = '${a1}'`);
+  assert.equal((await nextWake(t.db, org, now()))!.getTime(), T0.getTime() + 5 * 60_000, "lease ativo: só depois dele");
+});
+
+test("escritório ocioso não é reconsultado: nenhuma transação enquanto a dica valer; volta no vencimento", async () => {
+  const org = await mkOrg("hint");
+  const att = await mkAtt(org, "813");
+  await t.raw.insert(schema.syncCursors).values({ organizationId: org, attorneyId: att, lastCompleteDay: "2026-10-19", scanDay: "2026-10-20", targetDay: "2026-10-19", nextDueAt: new Date(T0.getTime() + 2 * 3600_000), lastReconciledOn: "2026-10-19" });
+  let tx = 0;
+  const spy = Object.create(t.db);
+  spy.transaction = (...a: unknown[]) => (tx++, (t.db as any).transaction(...a));
+  const d = fakeDjen();
+  const c = createCollector({ db: spy, collect: d.collect, now, log: () => {}, organizationIds: async () => [org] });
+  assert.equal((await c.collectNext()).status, "idle");
+  const afterFirst = tx;
+  assert.ok(afterFirst > 0);
+  assert.equal(c.nextWakeAt()!.getTime(), Math.min(T0.getTime() + 2 * 3600_000, T0.getTime() + HINT_MAX_MS), "a dica é limitada a 5 min");
+  for (let i = 0; i < 20; i++) assert.equal((await c.collectNext()).status, "idle");
+  assert.equal(tx, afterFirst, "20 chamadas ociosas, zero consultas ao banco do escritório");
+  assert.equal(d.calls.length, 0);
+  // passou o teto de 5 min: reavalia (barato) e volta a dormir até o vencimento real
+  advance(HINT_MAX_MS + 1000);
+  assert.equal((await c.collectNext()).status, "idle");
+  assert.ok(tx > afterFirst);
+  advance(2 * 3600_000);
+  assert.equal((await c.collectNext()).status, "success", "venceu a coleta diária");
+});
+
+test("a dica expira em 5 min mesmo sem wake(): pega OAB criada por OUTRA instância", async () => {
+  const org = await mkOrg("hint2");
+  const c = collector(fakeDjen().collect, org);
+  assert.equal((await c.collectNext()).status, "idle");
+  await mkAtt(org, "814"); // criada por outro processo: este coletor não foi avisado
+  assert.equal((await c.collectNext()).status, "idle", "ainda dentro da dica");
+  advance(HINT_MAX_MS + 1000);
+  assert.equal((await c.collectNext()).status, "success");
+});
+
+test("wake(): reavalia o escritório na hora; wake() sem argumento limpa todas as dicas", async () => {
+  const A = await mkOrg("wa");
+  const B = await mkOrg("wb");
+  const c = collector(fakeDjen().collect, [A, B]);
+  assert.equal((await c.collectNext()).status, "idle");
+  await mkAtt(A, "815");
+  await mkAtt(B, "816");
+  c.wake(A);
+  const o = (await c.collectNext()) as any;
+  assert.equal(o.status, "success");
+  assert.equal(o.claim.organizationId, A, "só A foi acordado");
+  c.wake();
+  assert.equal(((await c.collectNext()) as any).status, "success");
 });

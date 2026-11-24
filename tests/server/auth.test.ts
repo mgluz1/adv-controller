@@ -13,7 +13,7 @@ test("anônimo: session devolve usuario=null e operações de dados exigem login
   const s = await c.v1("session");
   assert.equal(s.status, 200);
   assert.deepEqual(s.json, { usuario: null, escritorio: null, escritorios: [], permissoes: [] });
-  for (const op of ["oab_list", "oab_create", "oab_update", "audit_list", "djen_list", "djen_mutate"])
+  for (const op of ["oab_list", "oab_create", "oab_update", "audit_list", "djen_list", "djen_mutate", "djen_archive_preview", "djen_sync_manual"])
     assert.equal((await c.v1(op)).status, 401, op);
   assert.equal((await c.v1("operacao_inexistente")).status, 404);
   for (const op of ["constructor", "__proto__", "toString", "hasOwnProperty"])
@@ -85,12 +85,11 @@ test("métodos e corpos inválidos no contrato", async () => {
   assert.equal(grande.status, 413);
 });
 
-test("operações futuras (publicações/coleta) exigem login e respondem 501 com sessão", async () => {
+test("operação futura (diagnóstico) exige login e responde 501 com sessão", async () => {
   const c = be.client();
   await c.signUp(email("f"));
   await c.createOffice("Escritório F", `f-${Date.now()}`);
   assert.equal((await c.v1("djen_diagnostics")).status, 501);
-  assert.equal((await c.v1("djen_sync_manual")).status, 501);
 });
 
 test("health responde sem detalhes internos", async () => {

@@ -14,7 +14,7 @@ multi-escritório segura**. Ainda **não** há coletor DJEN, publicações nem p
 | Isolamento | `src/server/db/tenant.ts` | `withTenant()`: único caminho para dados de escritório |
 | Autenticação | `src/server/auth.ts` | E-mail/senha, sessão em cookie, limite de taxa, organizações/membros/convites |
 | Permissões | `src/server/permissions.ts` | Papéis `owner · admin · member · viewer`; fonte única para Better Auth e operações |
-| Coletor | `src/server/collector/` | Uma janela (dia × OAB) por execução, com lease/fencing, commit atômico e recuperação de lacunas (ver *Coletor*). **Sem agendador ainda** (1.5) |
+| Coletor e agendador | `src/server/collector/` | Uma janela (dia × OAB) por execução, com lease/fencing, commit atômico e recuperação de lacunas; o agendador faz o laço com ritmo global (ver *Coletor*). **Desligado por padrão** (`COLLECTOR_ENABLED`) |
 | API | `src/server/app.ts`, `routes/` | `/api/auth/*` (Better Auth) e `/api/v1/<operacao>` (contrato do painel) |
 | Migração remota segura | `scripts/db.ts`, `src/server/db/preflight.ts` | `db:target`, `db:plan` (dry-run), `db:migrate` e `db:runtime-login`, com confirmações. Usam só `DATABASE_URL_UNPOOLED` (dono); `DATABASE_URL` é o runtime |
 
@@ -33,7 +33,8 @@ Mantém `POST /api/v1/<operacao>` do [MIGRACAO.md](MIGRACAO.md) §3. Erros: `{ "
 | `djen_list` `{p_filter}` | `publication:read` | `{ total, rows[], stats, attorney_stats[], tab_stats, tribunals[], pending_windows, latest, last_success, next_due }` (ver *Publicações*) |
 | `djen_mutate` `{p_action, p_ids, p_status?, p_notes?, p_providence?}` | `review` · `archive` · `restore` · `discard` conforme a ação | **número** de publicações afetadas (a UI exige `1` nas ações individuais) |
 | `djen_archive_preview` `{p_date}` | `publication:archive` | `{ count, rows[{source_id, process_number, tribunal}] }` (até 1.000 linhas; `count` exato) |
-| `djen_sync_manual`, `djen_diagnostics` | login + escritório | **501** “próxima fase” (coletor; sem simular dados) |
+| `djen_sync_manual` | `sync:request` (owner/admin) | `{ sucesso, mensagem }` · **429** se já houve pedido nos últimos 5 min (limite do escritório, compartilhado) · 409 sem OAB ativa |
+| `djen_diagnostics` | login + escritório | **501** “próxima fase” (tarefa 1.6; sem simular dados) |
 
 Gestão de membros, convites e do escritório usa os endpoints nativos `/api/auth/organization/*`
 (criar escritório, `invite-member`, `accept-invitation`, `update-member-role`, `remove-member`,
@@ -102,7 +103,7 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    as mesmas restrições existem como `CHECK` no banco. Consultas 100% parametrizadas.
 10. **Cadastro aberto não é o padrão em produção** (`AUTH_SIGNUP_ENABLED` ausente ⇒ falso).
 
-## Testes (189 de servidor/unidade + 3 E2E; todos locais)
+## Testes (216 de servidor/unidade + 3 E2E; todos locais)
 
 Rodam contra **Postgres real em PGlite** aplicando as migrações versionadas — sem rede e sem tocar
 o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, servidor próprio sem banco).
@@ -117,7 +118,10 @@ o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, serv
 | `tests/server/runtime-role.test.ts` (12) | Papel `adv_runtime`: sem acesso direto a dados de escritório, grava só o Better Auth, não herda `adv_app`, sem DDL, sem login na migração, `runtimeRoleProblems`, mutações do `verifySecurity` |
 | `tests/server/publications-schema.test.ts` (17) | Tabelas de publicações: isolamento, WITH CHECK, FK composta, deduplicação, N:N, arquivar/restaurar/tombstone, privilégios mínimos, CHECKs, cascata |
 | `tests/server/publications-api.test.ts` (18) | `djen_list`/`djen_mutate`/`djen_archive_preview`: papéis, filtros, contadores, isolamento, ciclo arquivar/restaurar/descartar, lote por IDs exatos, auditoria, validação |
-| `tests/server/collector.test.ts` (28) | Coletor: ciclo (30 dias, sobreposição, reconciliação, lacuna), lease/fencing, atomicidade, deduplicação, N:N, arquivada/tombstone, falhas e recuo, rodízio, isolamento |
+| `tests/scheduler.test.ts` (12) | Agendador: ritmo de 4 s, espera ociosa, recuo de erros, `wake()`, `stop()` limpo (relógio falso e timers reais) |
+| `tests/server/scheduler-integration.test.ts` (2) | Agendador + coletor + banco reais: primeira carga de 30 janelas, ociosidade, OAB nova acorda o laço, falha e recuperação |
+| `tests/server/sync-manual.test.ts` (8) | Coleta manual: papéis, limite de 5 min por escritório (compartilhado, simultâneo), efeito nos cursores, `wake` |
+| `tests/server/collector.test.ts` (32) | Coletor: ciclo (30 dias, sobreposição, reconciliação, lacuna), lease/fencing, atomicidade, deduplicação, N:N, arquivada/tombstone, falhas e recuo, rodízio, isolamento |
 | `tests/collector-pure.test.ts` (15) | Calendário, planejamento do ciclo, recuo e normalização do item (sem banco) |
 | `tests/djen-adapter.test.ts` (26) | Adaptador DJEN (sem rede) |
 | `tests/server/unit.test.ts` (9) | Ambiente, destino do banco (Supabase/TLS), permissões, validações, aderência do esquema |
@@ -195,10 +199,29 @@ Fluxo de **uma janela** (dia × OAB), sem nenhuma transação aberta durante a c
 **Recuo após falha:** bloqueio 403 = 60 min; 429 = o `Retry-After` (mín. 5 min, teto 6 h); 5xx/rede/timeout = 2, 4, 8… até 60 min; resposta
 inconsistente = 30 min; orçamento estourado = 5 min; erro interno = 15 min (mensagem genérica no registro; detalhe só no log do servidor).
 
+**Agendador** (`scheduler.ts`): laço que chama `collectNext()` uma janela por vez. **Ritmo:** no mínimo 4 s (`COLLECTOR_MIN_INTERVAL_MS`,
+piso 2 s) entre o **início da chamada à fonte** de duas janelas (o limite do CNJ é por origem, não por escritório). Não há relógio próprio:
+o coletor decide o que vence (09:00 de Brasília para o ciclo diário; imediato enquanto houver janelas pendentes) e o laço, quando ocioso, dorme
+até o menor vencimento conhecido (entre 1 s e 60 s). Erro ao acionar o coletor (p.ex. banco fora) nunca derruba o laço: recuo de 30 s a 5 min.
+`stop()` espera a janela em andamento (até 30 s no desligamento do servidor); o lease vence sozinho se travar.
+
+**Dicas por escritório:** um escritório sem trabalho não é reconsultado a cada janela. O coletor guarda até quando ele só terá trabalho
+(menor `next_due_at`, fim de lease), limitado a 5 min para enxergar mudanças feitas por **outra instância**. `wake(escritório)` apaga a dica; é
+chamado ao **criar/reativar uma OAB** (a primeira carga começa na hora) e na coleta manual. Custo ocioso: uma consulta por escritório a cada 5 min.
+
+**Coleta manual** (`djen_sync_manual`, `routes/sync.ts`): não coleta dentro da requisição (um ciclo são dezenas de janelas); registra o pedido,
+vence as OABs ativas **agora** (passando por cima de recuo de falha, sem tocar em janela com lease ativo) e acorda o agendador. Limite de **1 a cada 5 min
+por escritório, compartilhado entre usuários**: o instante é o do evento de auditoria `sync.requested` (com o autor), e um lock de transação
+(`pg_advisory_xact_lock`) serializa pedidos simultâneos. Sem OAB ativa responde 409 **sem consumir** o limite.
+
+**Subir o coletor** (ver `.env.example`): `COLLECTOR_ENABLED=true` em **UMA** instância, num host com processo persistente. Várias instâncias continuam
+corretas (lease/fencing), mas cada uma respeitaria o intervalo sozinha e a fonte receberia o dobro do ritmo; eleição de líder fica para quando houver
+mais de uma instância. Padrão desligado: `npm run dev` nunca consulta o CNJ por engano. `DJEN_BASE_URL` (https) troca a base da API.
+
 **Decisões e limites conhecidos**
 - O relógio é o da aplicação (`now` injetável), inclusive no lease; não depende do relógio do banco.
 - **Escritórios:** o coletor lista `organization` (o runtime lê) e entra em cada um com `withTenant`, em rodízio. Não há papel com visão global.
-  Cada tick sem trabalho custa uma consulta por escritório; para milhares de escritórios é preciso um índice de “escritórios com trabalho vencido” (tarefa 1.5).
+  Com as dicas, um escritório ocioso custa uma consulta a cada 5 min; acima de alguns milhares de escritórios vale um índice global de “escritórios com trabalho vencido”.
 - **Sem cache compartilhado:** a mesma OAB em dois escritórios é consultada duas vezes (decisão registrada; reavaliar se a fonte limitar).
 - **Gate de assinatura:** entra em `organizationIds` (Fase 3); hoje todos os escritórios são coletados.
 - **Capacidade (limite do CNJ):** com intervalo global de 4 s ≈ 21.600 janelas/dia. Uma OAB gasta ~8 janelas/dia (7 de sobreposição + 1 nova) e, em média,
@@ -241,8 +264,7 @@ Neon Auth desativado nela (estava vazio) e as 5 migrações (0000–0004) aplica
 
 ## Pendências (fora desta fase)
 
-- **Agendador** (09:00 de Brasília + continuação a cada minuto, ritmo global de 4 s), `djen_sync_manual`, `djen_diagnostics`; termos
-  de interesse (casamento + aba). O coletor (1.4) já existe, mas ninguém o chama ainda.
+- `djen_diagnostics`; termos de interesse (casamento + aba); eleição de líder do coletor (só se houver mais de uma instância); tela de "Buscar agora" já existe na interface e usa `djen_sync_manual`.
 - **Pagamento/assinatura** (estado do escritório: trial, ativo, em atraso, cancelado).
 - E-mail transacional (verificação, recuperação de senha, convites).
 - **Interface** de onboarding (criar escritório), gestão de membros/OABs e seleção de escritório: o

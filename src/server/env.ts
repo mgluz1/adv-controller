@@ -19,7 +19,15 @@ export interface Env {
   signupEnabled: boolean;
   /** Saltos de proxy confiáveis (Express `trust proxy`); 0 = sem proxy. */
   trustProxy: number;
+  /** Liga o coletor/agendador DESTE processo. Padrão: desligado (ligue em UMA instância; ver docs/BACKEND.md). */
+  collectorEnabled: boolean;
+  /** Intervalo mínimo entre o início de duas janelas (limite da fonte, por origem). Padrão 4 s; mínimo 2 s. */
+  collectorMinIntervalMs: number;
+  /** Base da API do DJEN. Padrão: a pública do CNJ. */
+  djenBaseUrl?: string;
 }
+
+export const COLLECTOR_MIN_INTERVAL_FLOOR_MS = 2_000;
 
 export class ConfigError extends Error {}
 
@@ -37,6 +45,22 @@ export function parseEnv(
   const flag = src.AUTH_SIGNUP_ENABLED;
   if (flag !== undefined && flag !== "true" && flag !== "false")
     throw new ConfigError('AUTH_SIGNUP_ENABLED deve ser "true" ou "false".');
+  const collectorFlag = src.COLLECTOR_ENABLED;
+  if (collectorFlag !== undefined && collectorFlag !== "" && collectorFlag !== "true" && collectorFlag !== "false")
+    throw new ConfigError('COLLECTOR_ENABLED deve ser "true" ou "false".');
+  const collectorMinIntervalMs = Number(src.COLLECTOR_MIN_INTERVAL_MS || 4000);
+  if (!Number.isInteger(collectorMinIntervalMs) || collectorMinIntervalMs < COLLECTOR_MIN_INTERVAL_FLOOR_MS || collectorMinIntervalMs > 600_000)
+    throw new ConfigError(`COLLECTOR_MIN_INTERVAL_MS deve ser um inteiro entre ${COLLECTOR_MIN_INTERVAL_FLOOR_MS} e 600000 (abaixo disso o limite do DJEN seria arriscado).`);
+  let djenBaseUrl: string | undefined;
+  if (src.DJEN_BASE_URL) {
+    try {
+      const u = new URL(src.DJEN_BASE_URL);
+      if (u.protocol !== "https:" || u.username || u.password) throw new Error();
+      djenBaseUrl = src.DJEN_BASE_URL.replace(/\/+$/, "");
+    } catch {
+      throw new ConfigError("DJEN_BASE_URL deve ser uma URL https sem credenciais.");
+    }
+  }
   const trustProxy = Number(src.TRUST_PROXY || 0);
   if (!Number.isInteger(trustProxy) || trustProxy < 0 || trustProxy > 5)
     throw new ConfigError("TRUST_PROXY deve ser um inteiro de 0 a 5.");
@@ -61,6 +85,9 @@ export function parseEnv(
     authSecret: src.BETTER_AUTH_SECRET || undefined,
     signupEnabled: flag === undefined ? nodeEnv !== "production" : flag === "true",
     trustProxy,
+    collectorEnabled: collectorFlag === "true",
+    collectorMinIntervalMs,
+    djenBaseUrl,
   };
 }
 
