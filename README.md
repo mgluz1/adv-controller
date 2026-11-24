@@ -33,9 +33,10 @@ Requer **Node 22+**.
 
 ```sh
 npm install
-cp .env.example .env.local   # preencha DATABASE_URL e BETTER_AUTH_SECRET (projeto Neon "adv-controller")
+cp .env.example .env.local   # preencha DATABASE_URL_UNPOOLED (dono, migração) e BETTER_AUTH_SECRET (projeto Neon "adv-controller")
 npm run db:plan              # valida o destino e mostra as migrações pendentes (não altera nada)
 npm run db:migrate -- --confirm-host=<host> --confirm-project=adv-controller
+npm run db:runtime-login -- --confirm-host=<host> --confirm-project=adv-controller   # credencial de runtime (não-dona)
 npm run dev                  # http://127.0.0.1:3000
 ```
 
@@ -52,6 +53,7 @@ Sem `.env.local` o front sobe e a API responde `503` com instruções. Os testes
 | `npm run db:generate` | Gera migração a partir de `src/server/db/schema.ts` |
 | `npm run db:target` / `db:plan` | Valida o destino (somente leitura) / dry-run das migrações |
 | `npm run db:migrate` | Aplica migrações no Neon, exige `--confirm-host` e `--confirm-project` |
+| `npm run db:runtime-login` | Habilita o login do papel de runtime `adv_runtime` e grava `DATABASE_URL` em `.env.local` (mesmas confirmações) |
 
 ## Estrutura
 

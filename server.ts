@@ -4,6 +4,7 @@ import { config } from "dotenv";
 import { createApp } from "./src/server/app.ts";
 import { createAuth } from "./src/server/auth.ts";
 import { connect, type Connection } from "./src/server/db/client.ts";
+import { runtimeRoleProblems } from "./src/server/db/preflight.ts";
 import { assertSafeDatabaseUrl, missingBackendVars, parseEnv } from "./src/server/env.ts";
 
 config({ path: [".env.local", ".env"], quiet: true });
@@ -16,7 +17,19 @@ let app: express.Express;
 if (missing.length === 0) {
   conn = connect(env.databaseUrl!);
   const t = assertSafeDatabaseUrl(env.databaseUrl!);
-  console.log(`Backend: banco ${t.database}@${t.host}${t.isPooled ? " (pooler)" : ""}`); // sem senha
+  console.log(`Backend: banco ${t.database}@${t.host}${t.isPooled ? " (pooler)" : ""} como "${t.user}"`); // sem senha
+  // A credencial de runtime não pode ser a do dono do esquema (ver drizzle/0002_runtime_role.sql).
+  const problems = await runtimeRoleProblems(async (s) => (await conn!.pool.query(s)).rows).catch((e: Error) => [
+    `falha ao verificar o papel de conexão: ${e.message}`,
+  ]);
+  if (problems.length) {
+    for (const p of problems) console.error(`[segurança] ${p}`);
+    if (env.nodeEnv === "production") {
+      console.error("Recusando subir em produção com credencial de runtime insegura. Use o papel adv_runtime (npm run db:runtime-login).");
+      process.exit(1);
+    }
+    console.warn("[segurança] Em desenvolvimento isto é apenas um aviso. Em produção seria fatal.");
+  }
   app = createApp({ auth: createAuth({ db: conn.db, env }), db: conn.db, env });
 } else if (env.nodeEnv === "production") {
   console.error(`Configuração ausente em produção: ${missing.join(", ")}`);

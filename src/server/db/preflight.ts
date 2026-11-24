@@ -161,5 +161,52 @@ export async function verifySecurity(q: Query): Promise<Check[]> {
             has_table_privilege('adv_app', 'public.audit_log', 'DELETE') as c`,
   );
   checks.push({ name: "adv_app não exclui OABs nem altera/exclui auditoria", ok: !del.a && !del.b && !del.c });
+
+  // Papel de runtime (migração 0002): sem privilégios especiais, sem acesso direto a dados de escritório.
+  const [rt] = await q(
+    "select rolsuper, rolbypassrls, rolcreaterole, rolcreatedb from pg_roles where rolname = 'adv_runtime'",
+  );
+  checks.push({
+    name: "papel adv_runtime existe sem superusuário/BYPASSRLS/CREATEROLE/CREATEDB",
+    ok: !!rt && !rt.rolsuper && !rt.rolbypassrls && !rt.rolcreaterole && !rt.rolcreatedb,
+  });
+  const [rtScope] = await q(
+    `select
+       (pg_has_role('adv_runtime', 'adv_app', 'SET')) as can_set,
+       (pg_has_role('adv_runtime', 'adv_app', 'USAGE')) as inherits,
+       (select count(*)::int from pg_tables where schemaname = 'public' and tableowner = 'adv_runtime') as owned,
+       (has_table_privilege('adv_runtime', 'public.attorneys', 'SELECT,INSERT,UPDATE,DELETE')
+         or has_table_privilege('adv_runtime', 'public.audit_log', 'SELECT,INSERT,UPDATE,DELETE')) as direct`,
+  );
+  checks.push({
+    name: "adv_runtime assume adv_app só via SET ROLE (sem herdar), não é dono de tabelas e não acessa dados de escritório direto",
+    ok: !!rtScope && rtScope.can_set === true && rtScope.inherits === false && rtScope.owned === 0 && rtScope.direct === false,
+  });
   return checks;
+}
+
+/**
+ * Executada na conexão de RUNTIME (a do servidor): reprova credencial com poder demais.
+ * Dono de tabelas, superusuário ou BYPASSRLS tornam o RLS inútil se algum código esquecer `withTenant`.
+ * Lista só problemas; quem chama decide se é fatal (produção) ou aviso (desenvolvimento).
+ */
+export async function runtimeRoleProblems(q: Query): Promise<string[]> {
+  const problems: string[] = [];
+  const [r] = await q(
+    `select current_user as usr, r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb,
+            (select count(*)::int from pg_tables where schemaname = 'public' and tableowner = current_user) as owned,
+            (to_regclass('public.attorneys') is not null
+              and has_table_privilege(current_user, 'public.attorneys', 'SELECT')) as direct_read,
+            pg_has_role(current_user, 'adv_app', 'SET') as can_set
+       from pg_roles r where r.rolname = current_user`,
+  );
+  if (!r) return ["não foi possível identificar o papel de conexão."];
+  const who = `"${r.usr}"`;
+  if (r.rolsuper) problems.push(`${who} é superusuário.`);
+  if (r.rolbypassrls) problems.push(`${who} tem BYPASSRLS.`);
+  if (r.rolcreaterole || r.rolcreatedb) problems.push(`${who} pode criar papéis/bancos.`);
+  if (r.owned > 0) problems.push(`${who} é dono de ${r.owned} tabela(s): o RLS não o protege contra um WHERE esquecido.`);
+  if (r.direct_read) problems.push(`${who} lê dados de escritório diretamente (fora de withTenant).`);
+  if (!r.can_set) problems.push(`${who} não pode assumir adv_app (SET ROLE): withTenant falharia.`);
+  return problems;
 }

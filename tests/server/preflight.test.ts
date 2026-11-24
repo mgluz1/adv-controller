@@ -16,16 +16,16 @@ const fresh = () => {
 
 test("migrações versionadas: ordem, hashes e instruções", () => {
   const m = readMigrations();
-  assert.deepEqual(m.map((x) => x.tag), ["0000_base", "0001_tenant_security"]);
+  assert.deepEqual(m.map((x) => x.tag), ["0000_base", "0001_tenant_security", "0002_runtime_role"]);
   assert.ok(m.every((x) => /^[0-9a-f]{64}$/.test(x.hash) && x.statements.length > 0));
-  assert.ok(m[0].when < m[1].when);
+  assert.ok(m[0].when < m[1].when && m[1].when < m[2].when);
 });
 
 test("banco vazio: destino aprovado e todas as migrações pendentes", async () => {
   const { q, client } = fresh();
   const v = judge(await inspect(q), readMigrations());
   assert.equal(v.ok, true, v.problems.join("; "));
-  assert.equal(v.pending.length, 2);
+  assert.equal(v.pending.length, 3);
   await client.close();
 });
 
@@ -38,7 +38,7 @@ test("depois de migrar: hashes do banco = hashes do repositório (nada pendente)
   assert.equal(v.ok, true, v.problems.join("; "));
   assert.equal(v.pending.length, 0);
   const checks = await verifySecurity(q);
-  assert.ok(checks.length >= 6);
+  assert.ok(checks.length >= 8);
   for (const c of checks) assert.ok(c.ok, `reprovado: ${c.name}`);
   await client.close();
 });

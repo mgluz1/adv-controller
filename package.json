@@ -16,7 +16,8 @@
     "db:generate": "drizzle-kit generate",
     "db:target": "node --import tsx scripts/db.ts target",
     "db:plan": "node --import tsx scripts/db.ts plan",
-    "db:migrate": "node --import tsx scripts/db.ts apply"
+    "db:migrate": "node --import tsx scripts/db.ts apply",
+    "db:runtime-login": "node --import tsx scripts/db.ts runtime-login"
   },
   "dependencies": {
     "better-auth": "1.7.18",

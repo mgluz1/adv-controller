@@ -10,12 +10,12 @@ multi-escritório segura**. Ainda **não** há coletor DJEN, publicações nem p
 | Configuração | `src/server/env.ts` | Validação estrita do ambiente; recusa Supabase e banco remoto sem TLS; mensagens nunca contêm senhas |
 | Conexão | `src/server/db/client.ts` | `pg.Pool` para o Neon (pooler), timeouts, erro de conexão ociosa não derruba o processo |
 | Esquema | `src/server/db/schema.ts` | 8 tabelas do Better Auth + `attorneys` (OABs) + `audit_log` |
-| Migrações | `drizzle/0000_base.sql`, `0001_tenant_security.sql` | Versionadas; a 2ª cria o papel `adv_app`, RLS forçado e permissões mínimas |
+| Migrações | `drizzle/0000_base.sql`, `0001_tenant_security.sql`, `0002_runtime_role.sql` | Versionadas; a 2ª cria o papel `adv_app`, RLS forçado e permissões mínimas; a 3ª cria o papel de runtime `adv_runtime` (sem login nem senha na migração) |
 | Isolamento | `src/server/db/tenant.ts` | `withTenant()`: único caminho para dados de escritório |
 | Autenticação | `src/server/auth.ts` | E-mail/senha, sessão em cookie, limite de taxa, organizações/membros/convites |
 | Permissões | `src/server/permissions.ts` | Papéis `owner · admin · member · viewer`; fonte única para Better Auth e operações |
 | API | `src/server/app.ts`, `routes/` | `/api/auth/*` (Better Auth) e `/api/v1/<operacao>` (contrato do painel) |
-| Migração remota segura | `scripts/db.ts`, `src/server/db/preflight.ts` | `db:target`, `db:plan` (dry-run), `db:migrate` com confirmações |
+| Migração remota segura | `scripts/db.ts`, `src/server/db/preflight.ts` | `db:target`, `db:plan` (dry-run), `db:migrate` e `db:runtime-login`, com confirmações. Usam só `DATABASE_URL_UNPOOLED` (dono); `DATABASE_URL` é o runtime |
 
 ### Contrato `/api/v1` implementado
 
@@ -60,7 +60,10 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    não é superusuário, não tem BYPASSRLS nem login, e RLS é **forçado** nas tabelas. Um `WHERE`
    esquecido não vaza dados; gravar em outro escritório é recusado (`WITH CHECK`).
 3. **Menor privilégio.** `adv_app`: sem acesso às tabelas do Better Auth; sem `DELETE` em OABs;
-   `audit_log` somente-inserção (sem `UPDATE`/`DELETE`).
+   `audit_log` somente-inserção (sem `UPDATE`/`DELETE`). **Credencial de runtime separada da de migração:** o servidor
+   conecta como `adv_runtime` (não é dono, sem BYPASSRLS/CREATEROLE, só DML nas tabelas do Better Auth, **nenhum**
+   acesso direto a `attorneys`/`audit_log`; chega aos dados de escritório apenas por `SET ROLE adv_app` em `withTenant`).
+   No startup o servidor reprova credencial de dono/superusuário/BYPASSRLS (`runtimeRoleProblems`): **fatal em produção**.
 4. **Guardas automáticas.** Um teste reprova qualquer tabela com `organization_id` sem RLS forçado +
    política (ou acessível a `adv_app`), e outro reprova divergência entre esquema, migrações e o que o
    Better Auth exige. Tabela nova de domínio **precisa** de migração de segurança análoga.
@@ -78,7 +81,7 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    as mesmas restrições existem como `CHECK` no banco. Consultas 100% parametrizadas.
 10. **Cadastro aberto não é o padrão em produção** (`AUTH_SIGNUP_ENABLED` ausente ⇒ falso).
 
-## Testes (73 de servidor/unidade + 3 E2E; todos locais)
+## Testes (85 de servidor/unidade + 3 E2E; todos locais)
 
 Rodam contra **Postgres real em PGlite** aplicando as migrações versionadas — sem rede e sem tocar
 o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, servidor próprio sem banco).
@@ -90,6 +93,7 @@ o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, serv
 | `tests/server/auth.test.ts` (11) | Contrato, login/logout, enumeração, cookie, CSRF, corpos inválidos, cabeçalhos |
 | `tests/server/production.test.ts` (4) | Cookie Secure, HSTS, limite de taxa, `X-Forwarded-For` forjado, CSRF nativo |
 | `tests/server/preflight.test.ts` (8) | Validação de destino, plano de migração, detecção de banco errado, verificação de segurança |
+| `tests/server/runtime-role.test.ts` (12) | Papel `adv_runtime`: sem acesso direto a dados de escritório, grava só o Better Auth, não herda `adv_app`, sem DDL, sem login na migração, `runtimeRoleProblems`, mutações do `verifySecurity` |
 | `tests/server/unit.test.ts` (9) | Ambiente, destino do banco (Supabase/TLS), permissões, validações, aderência do esquema |
 
 Os testes de negação têm **controles positivos** (a mesma chamada, com o papel certo, funciona), e as
@@ -123,6 +127,20 @@ Por isso nenhuma migração remota foi executada. O destino é validado pelo flu
    Aplica e roda a **verificação de segurança no banco real** (papel, RLS forçado, privilégios).
 5. `npm run dev` e teste o fluxo (cadastro → escritório → OAB).
 
+## Estado da branch `development` do Neon (24/11/2026)
+
+Projeto `adv-controller` (`lucky-base-99617459`, sa-east-1, PostgreSQL 18). Branch `development` criada a partir de `production`,
+Neon Auth desativado nela (estava vazio) e as 3 migrações aplicadas. **A `production` continua vazia e intocada.**
+
+- O ambiente de nuvem onde isto foi feito só alcança HTTPS: o driver `pg` (TCP 5432) não conecta. As migrações foram aplicadas
+  pela API HTTPS do Neon, reproduzindo o migrador do Drizzle (mesmos SQL e mesmos hashes em `drizzle.__drizzle_migrations`).
+- Verificação: impressão digital do esquema (colunas, constraints, índices, políticas, RLS, privilégios, papéis, diário) **idêntica**
+  à do banco de teste; teste funcional no Neon real (transação revertida) provou RLS, isolamento entre escritórios, `WITH CHECK`,
+  ausência de `DELETE`/`UPDATE` de auditoria e que `adv_runtime` não lê dados de escritório, não cria tabelas nem papéis.
+- **Falta, a partir de um computador com acesso à porta 5432:** `npm run db:target` e `db:plan` (devem apontar "nenhuma migração pendente"),
+  e `npm run db:runtime-login -- ...` (habilita o login de `adv_runtime` e grava `DATABASE_URL`). Só então `npm run dev` contra o Neon.
+- A branch `production` **não pôde ser protegida**: o plano atual do Neon não permite branches protegidas.
+
 ## Riscos conhecidos e pontos a validar
 
 | # | Risco | Mitigação / ação |
@@ -132,7 +150,7 @@ Por isso nenhuma migração remota foi executada. O destino é validado pelo flu
 | 3 | **Sem provedor de e-mail:** sem verificação de e-mail, sem recuperação de senha, convite compartilhado manualmente (link/ID) | Pendente (fase seguinte). Convite só pode ser aceito pelo e-mail convidado |
 | 4 | **Primeiro usuário em produção:** cadastro vem desligado | Ligar `AUTH_SIGNUP_ENABLED=true` temporariamente ou criar rotina administrativa de bootstrap (pendente) |
 | 5 | Com cadastro ligado, qualquer pessoa cria escritórios; não há trial/assinatura que limite | Gate por assinatura vem com o pagamento |
-| 6 | **A conexão do servidor é a do dono do esquema**: código que consultar `attorneys` direto, sem `withTenant`, **ignora RLS** | Regra de revisão: dados de escritório só via `withTenant`. Endurecimento recomendado: login separado, não-dono, para o runtime |
+| 6 | ~~A conexão do servidor era a do dono do esquema~~ **Resolvido** (migração 0002): o runtime usa `adv_runtime`; consulta direta a `attorneys` falha com `permission denied`, e o servidor recusa subir em produção com credencial de dono | Manter: tabela de domínio nova **não** ganha acesso automático para `adv_runtime` (sem `ALTER DEFAULT PRIVILEGES`) |
 | 7 | `TRUST_PROXY` errado atrás de proxy: todos os usuários parecem ter o mesmo IP (limite de taxa global) ou o IP pode ser forjado | Definir `TRUST_PROXY` conforme a hospedagem; há teste do caso forjado |
 | 8 | Sem CSP: a interface usa atributos `onclick` e estilos inline | O teor é sempre escapado (teste de XSS). CSP exige refatorar os handlers |
 | 9 | Auditoria cobre OABs e membros, não tentativas de login; é apagada se o escritório for excluído (cascata) | Decidir retenção (LGPD) antes de produção |
