@@ -11,9 +11,11 @@ reimplementação · **[decisão]** depende de decisão de produto.
 
 ## 1. Fonte e coleta (DJEN / CNJ)
 
-- **[a migrar]** Consulta por OAB + UF e por dia de disponibilização, paginada, na API pública do
-  DJEN (`/comunicacao`; base configurável). Evidência: `tests/a-migrar/djen-adapter.test.ts`,
-  `referencia/legado/server/services/djenClient.ts`.
+- **[vigente — adaptador]** Consulta por OAB + UF e por dia de disponibilização, paginada, na API pública do
+  DJEN (`/comunicacao`; base configurável). Implementado em `src/server/djen/client.ts` (`collectDay`),
+  puro e sem rede nos testes: `tests/djen-adapter.test.ts` (26 testes). **Ainda não validado contra a API real**
+  (o ambiente de desenvolvimento não alcança a internet aberta): use `tests/a-migrar/probe-djen.ts` de um computador com acesso.
+  O coletor/agendador que usa o adaptador continua **[a migrar]**. Referência: `referencia/legado/server/services/djenClient.ts`.
 - Uma **janela = um dia × uma OAB** por execução. Só avança o checkpoint (cursor) depois que a janela
   inteira foi gravada com sucesso, numa transação. Falha preserva a janela e registra o erro.
 - Orçamento por janela: 45 s e 100 páginas. Estourar o orçamento é falha explícita (a janela se

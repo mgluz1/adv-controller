@@ -81,8 +81,8 @@ Pontos novos do multi-escritório **(proposta)**:
 
 ## 5. Ordem sugerida
 
-1. Recuperar/reescrever o adaptador DJEN e mover `tests/a-migrar/djen-adapter.test.ts` para `tests/`
-   (10 testes; roda sem rede).
+1. ~~Recuperar/reescrever o adaptador DJEN~~ **Feito**: `src/server/djen/client.ts` + `tests/djen-adapter.test.ts`
+   (26 testes, sem rede). Falta validar contra a API real com `tests/a-migrar/probe-djen.ts`.
 2. Esquema Drizzle: usuários/sessões (Better Auth), organizações e membros, `oabs`, publicações,
    vínculos, cursores, execuções, verificações de fonte, auditoria, termos de interesse.
 3. Operações da §3 com testes de isolamento entre escritórios portados dos SQL em

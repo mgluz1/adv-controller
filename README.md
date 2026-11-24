@@ -25,7 +25,8 @@ ainda); a assinatura mensal é o alvo e ainda não foi implementada.
 | Camada de dados (`src/client/api.ts`, `transport.ts`) | Mapeamento resposta→interface preservado; transporte provisório `POST /api/v1/<operacao>` |
 | Servidor (`server.ts`, `src/server/`) | Express + Better Auth + Drizzle/Neon: login, escritórios, membros, papéis, OABs, auditoria |
 | Banco (`drizzle/`) | Migrações versionadas, RLS forçado, papel de aplicação sem privilégios de dono |
-| Publicações, coleta DJEN, assinaturas | **Não implementados** |
+| Adaptador DJEN (`src/server/djen/client.ts`) | Pronto e testado sem rede (26 testes); **ainda não validado contra a API real** |
+| Publicações, coletor/agendador, assinaturas | **Não implementados** |
 
 ## Rodando localmente
 
