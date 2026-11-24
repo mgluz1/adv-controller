@@ -14,6 +14,7 @@ multi-escritório segura**. Ainda **não** há coletor DJEN, publicações nem p
 | Isolamento | `src/server/db/tenant.ts` | `withTenant()`: único caminho para dados de escritório |
 | Autenticação | `src/server/auth.ts` | E-mail/senha, sessão em cookie, limite de taxa, organizações/membros/convites |
 | Permissões | `src/server/permissions.ts` | Papéis `owner · admin · member · viewer`; fonte única para Better Auth e operações |
+| Coletor | `src/server/collector/` | Uma janela (dia × OAB) por execução, com lease/fencing, commit atômico e recuperação de lacunas (ver *Coletor*). **Sem agendador ainda** (1.5) |
 | API | `src/server/app.ts`, `routes/` | `/api/auth/*` (Better Auth) e `/api/v1/<operacao>` (contrato do painel) |
 | Migração remota segura | `scripts/db.ts`, `src/server/db/preflight.ts` | `db:target`, `db:plan` (dry-run), `db:migrate` e `db:runtime-login`, com confirmações. Usam só `DATABASE_URL_UNPOOLED` (dono); `DATABASE_URL` é o runtime |
 
@@ -101,7 +102,7 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    as mesmas restrições existem como `CHECK` no banco. Consultas 100% parametrizadas.
 10. **Cadastro aberto não é o padrão em produção** (`AUTH_SIGNUP_ENABLED` ausente ⇒ falso).
 
-## Testes (146 de servidor/unidade + 3 E2E; todos locais)
+## Testes (189 de servidor/unidade + 3 E2E; todos locais)
 
 Rodam contra **Postgres real em PGlite** aplicando as migrações versionadas — sem rede e sem tocar
 o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, servidor próprio sem banco).
@@ -116,6 +117,8 @@ o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, serv
 | `tests/server/runtime-role.test.ts` (12) | Papel `adv_runtime`: sem acesso direto a dados de escritório, grava só o Better Auth, não herda `adv_app`, sem DDL, sem login na migração, `runtimeRoleProblems`, mutações do `verifySecurity` |
 | `tests/server/publications-schema.test.ts` (17) | Tabelas de publicações: isolamento, WITH CHECK, FK composta, deduplicação, N:N, arquivar/restaurar/tombstone, privilégios mínimos, CHECKs, cascata |
 | `tests/server/publications-api.test.ts` (18) | `djen_list`/`djen_mutate`/`djen_archive_preview`: papéis, filtros, contadores, isolamento, ciclo arquivar/restaurar/descartar, lote por IDs exatos, auditoria, validação |
+| `tests/server/collector.test.ts` (28) | Coletor: ciclo (30 dias, sobreposição, reconciliação, lacuna), lease/fencing, atomicidade, deduplicação, N:N, arquivada/tombstone, falhas e recuo, rodízio, isolamento |
+| `tests/collector-pure.test.ts` (15) | Calendário, planejamento do ciclo, recuo e normalização do item (sem banco) |
 | `tests/djen-adapter.test.ts` (26) | Adaptador DJEN (sem rede) |
 | `tests/server/unit.test.ts` (9) | Ambiente, destino do banco (Supabase/TLS), permissões, validações, aderência do esquema |
 
@@ -172,6 +175,36 @@ Ainda **não** existem: a função de casamento dos termos de interesse (tarefa 
 claim/fencing vem com o coletor (1.4). Dados de escritório a coletar para **todos** os escritórios exigem enumerar `organization`
 (o runtime lê) e chamar `withTenant` por escritório: não há papel com visão global, de propósito.
 
+## Coletor (`src/server/collector/`)
+
+Fluxo de **uma janela** (dia × OAB), sem nenhuma transação aberta durante a chamada de rede:
+
+1. **claim** (`claimWindow`, transação curta): cria o cursor das OABs ativas, escolhe a mais antiga vencida com
+   `FOR UPDATE SKIP LOCKED`, grava um **lease novo** (5 min) e abre a execução em `sync_runs`. Execução anterior sem desfecho vira `ABANDONED`.
+2. **coleta** (`collectDay`, adaptador 1.1): completa e validada, ou falha explícita.
+3. **commit** (`commitWindow`, UMA transação): primeiro o **fencing** (`lease_id` igual, `lease_until` no futuro e `scan_day` na posição
+   esperada); se não vale, `StaleLeaseError` e nada é gravado. Depois publicações (`ON CONFLICT DO NOTHING`), vínculos para as vivas
+   (inclusive as já existentes, achadas por outra OAB), `last_seen_at` e o encerramento da execução. Tudo ou nada.
+4. **falha** (`failWindow`): libera o lease, conta a falha, adia a janela e **a repete** (o cursor nunca pula). Só mexe no cursor se o lease ainda é do worker.
+
+**Ciclo e lacunas** (`schedule.ts`): primeira carga = últimos 30 dias, do mais antigo ao mais novo; coleta normal relê os **7 dias** já coletados
+(sobreposição) + dias novos; reconciliação de 30 dias a cada 7; parado por dias ⇒ o recuo parte da última janela concluída e cobre o buraco
+(teto de 180 dias). Concluído o ciclo, `next_due_at` = próximo 09:00 de Brasília (12:00 UTC); com janelas pendentes, vence imediatamente.
+`last_reconciled_on` é gravado ao **iniciar** o ciclo de reconciliação (o ciclo persiste em `scan_day` e termina antes de outro começar).
+
+**Recuo após falha:** bloqueio 403 = 60 min; 429 = o `Retry-After` (mín. 5 min, teto 6 h); 5xx/rede/timeout = 2, 4, 8… até 60 min; resposta
+inconsistente = 30 min; orçamento estourado = 5 min; erro interno = 15 min (mensagem genérica no registro; detalhe só no log do servidor).
+
+**Decisões e limites conhecidos**
+- O relógio é o da aplicação (`now` injetável), inclusive no lease; não depende do relógio do banco.
+- **Escritórios:** o coletor lista `organization` (o runtime lê) e entra em cada um com `withTenant`, em rodízio. Não há papel com visão global.
+  Cada tick sem trabalho custa uma consulta por escritório; para milhares de escritórios é preciso um índice de “escritórios com trabalho vencido” (tarefa 1.5).
+- **Sem cache compartilhado:** a mesma OAB em dois escritórios é consultada duas vezes (decisão registrada; reavaliar se a fonte limitar).
+- **Gate de assinatura:** entra em `organizationIds` (Fase 3); hoje todos os escritórios são coletados.
+- **Capacidade (limite do CNJ):** com intervalo global de 4 s ≈ 21.600 janelas/dia. Uma OAB gasta ~8 janelas/dia (7 de sobreposição + 1 nova) e, em média,
+  +4,3/dia de reconciliação ⇒ ~12 janelas/dia ⇒ **~1.750 OABs** no total antes de saturar. Para escalar: reduzir a sobreposição, coletar por intervalo de datas ou dividir por origem/IP.
+- **Não validado contra a API real do DJEN** (mesma limitação do adaptador).
+
 ## Estado da branch `development` do Neon (24/11/2026)
 
 Projeto `adv-controller` (`lucky-base-99617459`, sa-east-1, PostgreSQL 18). Branch `development` criada a partir de `production`,
@@ -208,8 +241,8 @@ Neon Auth desativado nela (estava vazio) e as 5 migrações (0000–0004) aplica
 
 ## Pendências (fora desta fase)
 
-- **Coletor DJEN** e agendador (regras em [REGRAS_DE_NEGOCIO.md](REGRAS_DE_NEGOCIO.md)), `djen_sync_manual`, `djen_diagnostics`; termos
-  de interesse (casamento + aba).
+- **Agendador** (09:00 de Brasília + continuação a cada minuto, ritmo global de 4 s), `djen_sync_manual`, `djen_diagnostics`; termos
+  de interesse (casamento + aba). O coletor (1.4) já existe, mas ninguém o chama ainda.
 - **Pagamento/assinatura** (estado do escritório: trial, ativo, em atraso, cancelado).
 - E-mail transacional (verificação, recuperação de senha, convites).
 - **Interface** de onboarding (criar escritório), gestão de membros/OABs e seleção de escritório: o

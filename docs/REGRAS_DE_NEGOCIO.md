@@ -15,7 +15,7 @@ reimplementação · **[decisão]** depende de decisão de produto.
   DJEN (`/comunicacao`; base configurável). Implementado em `src/server/djen/client.ts` (`collectDay`),
   puro e sem rede nos testes: `tests/djen-adapter.test.ts` (26 testes). **Ainda não validado contra a API real**
   (o ambiente de desenvolvimento não alcança a internet aberta): use `tests/a-migrar/probe-djen.ts` de um computador com acesso.
-  O coletor/agendador que usa o adaptador continua **[a migrar]**. Referência: `referencia/legado/server/services/djenClient.ts`.
+  O coletor (uma janela por execução, lease/fencing, commit atômico, lacunas) está em `src/server/collector/` **[vigente]**; o agendador continua **[a migrar]**. Referência: `referencia/legado/server/services/djenClient.ts`.
 - Uma **janela = um dia × uma OAB** por execução. Só avança o checkpoint (cursor) depois que a janela
   inteira foi gravada com sucesso, numa transação. Falha preserva a janela e registra o erro.
 - Orçamento por janela: 45 s e 100 páginas. Estourar o orçamento é falha explícita (a janela se
@@ -38,7 +38,7 @@ reimplementação · **[decisão]** depende de decisão de produto.
 - Limite da fonte: após uma chamada, `x-ratelimit-remaining` foi observado em 19 (limite aparente de
   20 por janela de taxa). O coletor serializa o início de janelas (intervalo mínimo global de 4 s).
 
-## 2. Agenda e recuperação de lacunas **[a migrar]**
+## 2. Agenda e recuperação de lacunas **[vigente no coletor; agendador a migrar]**
 
 - Coleta diária às 09:00 de Brasília (12:00 UTC) + continuação a cada minuto **somente** quando
   houver janela pendente.

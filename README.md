@@ -4,8 +4,8 @@ SaaS para escritórios de advocacia acompanharem, revisarem e arquivarem as comu
 **Diário de Justiça Eletrônico Nacional (DJEN)** dirigidas às OABs de cada escritório.
 
 > **Estado: backend com autenticação, escritórios, papéis, OABs, isolamento por RLS, auditoria e as operações de
-> publicações (listar, revisar, arquivar, restaurar, descartar, lote).** **Ainda não existem** o coletor DJEN
-> (as publicações precisam ser inseridas por ele) nem o pagamento (`djen_sync_manual` e `djen_diagnostics` respondem `501`). Veja [docs/BACKEND.md](docs/BACKEND.md).
+> publicações (listar, revisar, arquivar, restaurar, descartar, lote).** **Ainda não existem** o agendador que dispara o coletor
+> (portanto nenhuma publicação entra sozinha) nem o pagamento (`djen_sync_manual` e `djen_diagnostics` respondem `501`). Veja [docs/BACKEND.md](docs/BACKEND.md).
 
 ## Visão do produto
 
@@ -28,7 +28,8 @@ ainda); a assinatura mensal é o alvo e ainda não foi implementada.
 | Adaptador DJEN (`src/server/djen/client.ts`) | Pronto e testado sem rede (26 testes); **ainda não validado contra a API real** |
 | Esquema de publicações (`publications`, vínculos, cursores, execuções, termos) | Pronto, com RLS e testado; aplicado na branch `development` do Neon |
 | Operações `djen_list`, `djen_mutate`, `djen_archive_preview` | Prontas e testadas (isolamento, papéis, auditoria) |
-| Coletor/agendador, `djen_sync_manual`, `djen_diagnostics`, termos de interesse, assinaturas | **Não implementados** |
+| Coletor (`src/server/collector/`) | Pronto e testado (lease/fencing, commit atômico, lacunas); **ninguém o dispara ainda** |
+| Agendador, `djen_sync_manual`, `djen_diagnostics`, termos de interesse, assinaturas | **Não implementados** |
 
 ## Rodando localmente
 

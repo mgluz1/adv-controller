@@ -88,7 +88,7 @@ Pontos novos do multi-escritório **(proposta)**:
 3. ~~Operações da §3~~ **`djen_list`/`djen_mutate`/`djen_archive_preview` feitas** (com os cenários de isolamento, deduplicação,
    N:N, arquivar/restaurar/tombstone e lote portados). Faltam `djen_sync_manual` e `djen_diagnostics` (1.5/1.6).
 4. Better Auth no Express (`/api/auth/*`) e troca do trecho provisório em `api.ts`.
-5. Serviço de coleta + agendador.
+5. ~~Serviço de coleta~~ **Feito** (`src/server/collector/`, tarefa 1.4). Falta o **agendador** (1.5).
 6. Onboarding de escritório, cadastro de OABs e termos de interesse (hoje inexistentes).
 7. Assinatura mensal: **nada existe no código** (não há o que remover); definir provedor e ciclo
    de vida (trial, atraso, cancelamento) antes do esquema de organizações.
