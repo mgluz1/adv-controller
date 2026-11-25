@@ -513,3 +513,20 @@ test("o modal fecha com Esc e clicando fora; as abas são navegáveis e marcam a
   await page.locator("#modal-config").click({ position: { x: 4, y: 4 } });
   await expect(page.locator("#modal-config")).not.toHaveClass(/modal-visible/);
 });
+
+// ── Fontes locais (privacidade) ───────────────────────────────────────────────
+
+test("fontes Inter e Fraunces carregam do próprio servidor e nenhuma requisição sai para terceiros", async ({ page }) => {
+  const externos: string[] = [];
+  page.on("request", (r) => {
+    if (!/^(http:\/\/127\.0\.0\.1|data:|blob:)/.test(r.url())) externos.push(r.url());
+  });
+  await instalar(page, mundo({ logado: null }));
+  await page.goto("/");
+  await page.evaluate(async () => {
+    await Promise.all([document.fonts.load('400 16px "Inter"'), document.fonts.load('600 16px "Inter"'), document.fonts.load('400 32px "Fraunces"')]);
+  });
+  const ok = await page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/"/g, "")));
+  expect(ok).toEqual(expect.arrayContaining(["Inter", "Fraunces"]));
+  expect(externos).toEqual([]);
+});

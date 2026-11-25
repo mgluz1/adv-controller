@@ -21,6 +21,8 @@
     "admin:create-owner": "node --import tsx scripts/admin.ts create-owner"
   },
   "dependencies": {
+    "@fontsource/fraunces": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
     "better-auth": "1.7.18",
     "dotenv": "17.2.3",
     "drizzle-orm": "0.45.4",

@@ -1,3 +1,9 @@
+// Fontes locais (empacotadas pelo Vite): sem Google Fonts, para não expor o IP dos usuários a terceiros.
+import "@fontsource/inter/latin-400.css";
+import "@fontsource/inter/latin-500.css";
+import "@fontsource/inter/latin-600.css";
+import "@fontsource/fraunces/latin-400.css";
+import "@fontsource/fraunces/latin-500.css";
 import {
   fetchPublicacoes,
   atualizarStatusPublicacao,
