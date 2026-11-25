@@ -12,7 +12,10 @@ test("anônimo: session devolve usuario=null e operações de dados exigem login
   const c = be.client();
   const s = await c.v1("session");
   assert.equal(s.status, 200);
-  assert.deepEqual(s.json, { usuario: null, escritorio: null, escritorios: [], permissoes: [] });
+  assert.deepEqual(s.json, {
+    usuario: null, escritorio: null, escritorios: [], permissoes: [],
+    recursos: { recuperacao_senha: false, cadastro_aberto: true, cadastro_por_convite: true, verificacao_email: false },
+  });
   for (const op of ["oab_list", "oab_create", "oab_update", "audit_list", "djen_list", "djen_mutate", "djen_archive_preview", "djen_sync_manual", "djen_diagnostics", "interest_list", "interest_create", "interest_update"])
     assert.equal((await c.v1(op)).status, 401, op);
   assert.equal((await c.v1("operacao_inexistente")).status, 404);

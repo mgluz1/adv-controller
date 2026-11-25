@@ -4,7 +4,8 @@ import { createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { organization as organizationPlugin } from "better-auth/plugins";
 import { and, asc, eq } from "drizzle-orm";
 import type { Env } from "./env.ts";
-import { allowedOrigins, validateAuthSecret } from "./env.ts";
+import { allowedOrigins, emailIsTrusted, validateAuthSecret } from "./env.ts";
+import type { Mailer } from "./email/mailer.ts";
 import * as schema from "./db/schema.ts";
 import { withTenant } from "./db/tenant.ts";
 import type { Db } from "./db/types.ts";
@@ -13,14 +14,8 @@ import { ac, roles } from "./permissions.ts";
 export interface AuthDeps {
   db: Db;
   env: Env;
-  /** Entrega do convite (e-mail). Sem provedor de e-mail ainda: o convite é compartilhado por link/ID. */
-  sendInvitation?: (data: {
-    invitationId: string;
-    email: string;
-    role: string;
-    organizationName: string;
-    inviterName: string;
-  }) => Promise<void>;
+  /** E-mail transacional (verificação, recuperação de senha, convite). Sem ele nada é enviado. */
+  mailer?: Mailer;
 }
 
 /** Ações de organização do Better Auth que entram na trilha de auditoria do escritório. */
@@ -34,10 +29,12 @@ const AUDITED: Record<string, string> = {
   "/organization/update": "office.updated",
 };
 
-export function createAuth({ db, env, sendInvitation }: AuthDeps) {
+export function createAuth({ db, env, mailer }: AuthDeps) {
   if (!env.authSecret) throw new Error("BETTER_AUTH_SECRET ausente.");
   validateAuthSecret(env.authSecret, env.nodeEnv);
   const production = env.nodeEnv === "production";
+  // E-mail só é PROVA DE POSSE com provedor real. Só então a verificação é obrigatória (login e aceite de convite).
+  const trusted = emailIsTrusted(env);
 
   return betterAuth({
     appName: "Adv Controller",
@@ -48,13 +45,29 @@ export function createAuth({ db, env, sendInvitation }: AuthDeps) {
 
     emailAndPassword: {
       enabled: true,
+      // Cadastro fechado (padrão em produção) é TOTAL: nem e-mail com convite pendente passa por aqui. O convidado cria a
+      // conta por `invite_sign_up`, onde a prova de posse do e-mail é o link do convite (evita o sequestro prévio de conta).
       disableSignUp: !env.signupEnabled,
       minPasswordLength: 10,
       maxPasswordLength: 128,
       autoSignIn: true,
-      // Verificação de e-mail e recuperação de senha dependem de um provedor de e-mail (pendente).
-      requireEmailVerification: false,
+      requireEmailVerification: trusted,
+      resetPasswordTokenExpiresIn: 60 * 60,
+      revokeSessionsOnPasswordReset: true, // trocar a senha encerra as sessões abertas (inclusive a de quem a roubou)
+      sendResetPassword: mailer?.enabled
+        ? async ({ user, url }) => void (await mailer.sendPasswordReset({ to: user.email, name: user.name, url }))
+        : undefined,
     },
+
+    emailVerification: mailer?.enabled
+      ? {
+          sendOnSignUp: true,
+          sendOnSignIn: true, // quem tenta entrar sem verificar recebe um novo link
+          autoSignInAfterVerification: true,
+          expiresIn: 60 * 60,
+          sendVerificationEmail: async ({ user, url }) => void (await mailer.sendVerification({ to: user.email, name: user.name, url })),
+        }
+      : undefined,
 
     session: {
       expiresIn: 60 * 60 * 24 * 7, // 7 dias
@@ -76,6 +89,10 @@ export function createAuth({ db, env, sendInvitation }: AuthDeps) {
       customRules: {
         "/sign-in/email": { window: 60, max: 5 },
         "/sign-up/email": { window: 3600, max: 10 },
+        "/request-password-reset": { window: 300, max: 5 },
+        "/forget-password": { window: 300, max: 5 },
+        "/reset-password": { window: 300, max: 10 },
+        "/send-verification-email": { window: 300, max: 5 },
       },
     },
 
@@ -142,16 +159,16 @@ export function createAuth({ db, env, sendInvitation }: AuthDeps) {
         allowUserToCreateOrganization: true,
         invitationExpiresIn: 60 * 60 * 24 * 7,
         cancelPendingInvitationsOnReInvite: true,
-        requireEmailVerificationOnInvitation: false,
-        sendInvitationEmail: sendInvitation
+        requireEmailVerificationOnInvitation: trusted,
+        sendInvitationEmail: mailer?.enabled
           ? async (d) =>
-              sendInvitation({
+              void (await mailer.sendInvitation({
+                to: d.email,
                 invitationId: d.id,
-                email: d.email,
                 role: d.role,
                 organizationName: d.organization.name,
                 inviterName: d.inviter.user.name,
-              })
+              }))
           : undefined,
         organizationHooks: {
           // Higiene: quem sai do escritório não deve manter esse escritório como "ativo" em sessões.

@@ -25,7 +25,15 @@ export interface Env {
   collectorMinIntervalMs: number;
   /** Base da API do DJEN. Padrão: a pública do CNJ. */
   djenBaseUrl?: string;
+  /** Provedor de e-mail transacional. `none` = sem e-mail (recuperação de senha e cadastro por convite ficam indisponíveis). */
+  emailProvider: EmailProvider;
+  /** Remetente (ex.: `Adv Controller <nao-responda@seudominio.com.br>`). Obrigatório com provedor real. */
+  emailFrom?: string;
+  /** Chave do provedor (Resend). Nunca registrada em log. */
+  resendApiKey?: string;
 }
+
+export type EmailProvider = "none" | "log" | "resend";
 
 export const COLLECTOR_MIN_INTERVAL_FLOOR_MS = 2_000;
 
@@ -61,6 +69,18 @@ export function parseEnv(
       throw new ConfigError("DJEN_BASE_URL deve ser uma URL https sem credenciais.");
     }
   }
+  const rawProvider = src.EMAIL_PROVIDER || "none";
+  if (rawProvider !== "none" && rawProvider !== "log" && rawProvider !== "resend")
+    throw new ConfigError('EMAIL_PROVIDER deve ser "none", "log" (só desenvolvimento) ou "resend".');
+  const emailProvider: EmailProvider = rawProvider;
+  if (emailProvider === "log" && nodeEnv === "production")
+    throw new ConfigError('EMAIL_PROVIDER="log" imprimiria links de acesso no log: não é permitido em produção.');
+  const emailFrom = src.EMAIL_FROM?.trim() || undefined;
+  if (emailProvider === "resend") {
+    if (!src.RESEND_API_KEY) throw new ConfigError("RESEND_API_KEY é obrigatória com EMAIL_PROVIDER=resend.");
+    if (!emailFrom || !/^[^<>\r\n]*<[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$|^[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+$/.test(emailFrom))
+      throw new ConfigError('EMAIL_FROM inválido: use "Nome <endereco@dominio>" ou "endereco@dominio".');
+  }
   const trustProxy = Number(src.TRUST_PROXY || 0);
   if (!Number.isInteger(trustProxy) || trustProxy < 0 || trustProxy > 5)
     throw new ConfigError("TRUST_PROXY deve ser um inteiro de 0 a 5.");
@@ -88,8 +108,14 @@ export function parseEnv(
     collectorEnabled: collectorFlag === "true",
     collectorMinIntervalMs,
     djenBaseUrl,
+    emailProvider,
+    emailFrom,
+    resendApiKey: emailProvider === "resend" ? src.RESEND_API_KEY : undefined,
   };
 }
+
+/** Só com provedor REAL o e-mail é prova de posse: verificação obrigatória, cadastro por convite e recuperação de senha. */
+export const emailIsTrusted = (env: Pick<Env, "emailProvider">) => env.emailProvider === "resend";
 
 /** Variáveis exigidas para o backend subir. Lista só os NOMES que faltam. */
 export function missingBackendVars(env: Env): string[] {

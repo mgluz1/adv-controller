@@ -86,6 +86,26 @@ sonda (o adaptador valida a OAB de cada item), então `source_check` vem da exec
 conta); `filter_verified` é verdadeiro se ela terminou com sucesso. Extras para suporte: `cursors` (estado de cada OAB: posição, falhas, último erro, se
 há lease) e `collector.enabled` (o coletor roda neste processo?). O resumo é o mesmo da listagem (`collectionSummary`).
 
+### Conta: primeiro acesso, convites, e-mail e recuperação de senha
+
+- **Primeiro dono (produção).** O cadastro aberto vem **desligado** (`AUTH_SIGNUP_ENABLED` ausente). O primeiro usuário se cria pela CLI, que não tem
+  endpoint HTTP: `npm run admin:create-owner -- --confirm-host=<host> --email=… --name="…" [--office="…"]`. A senha vem de `ADMIN_PASSWORD` ou de um
+  prompt sem eco e **nunca é impressa nem passada em argumento**. Usa `DATABASE_URL` (papel de runtime), recusa Supabase/sem TLS e exige
+  `--confirm-host` igual ao host do banco. O e-mail nasce **verificado** (o operador é a prova de posse).
+- **Convite por link.** O dono/admin convida em *Configurações → Equipe*. O convidado abre `/convite/<id>`: sem conta, cria a conta ali mesmo
+  (`invite_sign_up`); com conta, entra; logado, aceita. **A prova de posse do e-mail é o link do convite** (o id só existe no e-mail do convidado ou no link
+  que o dono compartilha), então a conta nasce verificada e o e-mail vem do convite, nunca do corpo. Convite inexistente, expirado, cancelado ou usado
+  respondem **igual** (404), com limite de 30 consultas/min (10 cadastros/min) por IP. Sem provedor de e-mail, o dono copia o link e o envia.
+- **Por que o cadastro público continua 100% fechado, mesmo para e-mail com convite.** Uma "exceção para convite" no `/sign-up/email` permitiria
+  *sequestro prévio*: o atacante registra o e-mail da vítima com a senha dele, a vítima clica no e-mail de verificação e a conta passa a ser dela
+  com a senha do atacante. Há teste para isso.
+- **E-mail transacional** (`src/server/email/`): `EMAIL_PROVIDER=none|log|resend`. Só o provedor **real** (`resend`) prova posse do e-mail; com ele a
+  verificação passa a ser **obrigatória** para entrar e para aceitar convite, e a recuperação de senha fica disponível (link de 1 h, uso único, encerra as
+  sessões abertas; resposta idêntica com ou sem conta). `log` imprime links no terminal e é **proibido em produção**. Falha do provedor nunca derruba a
+  requisição nem vaza para a resposta: vai ao log do servidor com o destinatário mascarado, sem chave nem link. Modelos em pt-BR, com escape de HTML
+  e sem controle/quebra de linha no assunto.
+- A sessão (`session`) informa `recursos` (`recuperacao_senha`, `cadastro_aberto`, `cadastro_por_convite`, `verificacao_email`) para a interface decidir o que mostrar.
+
 ### Papéis
 
 | | owner | admin | member | viewer |
@@ -132,7 +152,7 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    as mesmas restrições existem como `CHECK` no banco. Consultas 100% parametrizadas.
 10. **Cadastro aberto não é o padrão em produção** (`AUTH_SIGNUP_ENABLED` ausente ⇒ falso).
 
-## Testes (252 de servidor/unidade + 3 E2E; todos locais)
+## Testes (285 de servidor/unidade + 3 E2E; todos locais)
 
 Rodam contra **Postgres real em PGlite** aplicando as migrações versionadas — sem rede e sem tocar
 o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, servidor próprio sem banco).
@@ -147,6 +167,8 @@ o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, serv
 | `tests/server/runtime-role.test.ts` (12) | Papel `adv_runtime`: sem acesso direto a dados de escritório, grava só o Better Auth, não herda `adv_app`, sem DDL, sem login na migração, `runtimeRoleProblems`, mutações do `verifySecurity` |
 | `tests/server/publications-schema.test.ts` (17) | Tabelas de publicações: isolamento, WITH CHECK, FK composta, deduplicação, N:N, arquivar/restaurar/tombstone, privilégios mínimos, CHECKs, cascata |
 | `tests/server/publications-api.test.ts` (18) | `djen_list`/`djen_mutate`/`djen_archive_preview`: papéis, filtros, contadores, isolamento, ciclo arquivar/restaurar/descartar, lote por IDs exatos, auditoria, validação |
+| `tests/email.test.ts` (13) | E-mail: modelos (escape, injeção de cabeçalho), transporte Resend (a chave nunca vaza), mailer (falha do provedor não derruba), configuração, limitador do convite |
+| `tests/server/account-flows.test.ts` (16) | Convite por link, cadastro fechado (ataque de sequestro prévio), verificação de e-mail, recuperação de senha, sem provedor de e-mail, bootstrap do primeiro dono |
 | `tests/server/interest-match.test.ts` (11) | Regra de casamento avaliada no motor REAL de regex do PostgreSQL: matriz da especificação (sigla, falsos positivos), termos literais e hostis, desempenho |
 | `tests/server/interest-api.test.ts` (17) | Termos de interesse: cenário completo do `interesse-rollback.sql` portado (abas, contadores, filtros, status, arquivo, importação futura, tombstone, isolamento) e gerência (papéis, duplicata, validação, auditoria) |
 | `tests/server/diagnostics.test.ts` (8) | `djen_diagnostics`: contrato do painel, estado da fonte, estado por OAB, isolamento, consistência com a listagem, ponta a ponta com o coletor |

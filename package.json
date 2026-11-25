@@ -17,7 +17,8 @@
     "db:target": "node --import tsx scripts/db.ts target",
     "db:plan": "node --import tsx scripts/db.ts plan",
     "db:migrate": "node --import tsx scripts/db.ts apply",
-    "db:runtime-login": "node --import tsx scripts/db.ts runtime-login"
+    "db:runtime-login": "node --import tsx scripts/db.ts runtime-login",
+    "admin:create-owner": "node --import tsx scripts/admin.ts create-owner"
   },
   "dependencies": {
     "better-auth": "1.7.18",

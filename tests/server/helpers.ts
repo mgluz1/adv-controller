@@ -5,6 +5,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../../src/server/app.ts";
+import { createMailer } from "../../src/server/email/mailer.ts";
+import { createMemoryTransport } from "../../src/server/email/transports.ts";
 import { createAuth } from "../../src/server/auth.ts";
 import * as schema from "../../src/server/db/schema.ts";
 import type { Db } from "../../src/server/db/types.ts";
@@ -105,6 +107,8 @@ export class Client {
 }
 
 export interface Backend {
+  auth: ReturnType<typeof createAuth>;
+  mail: ReturnType<typeof createMemoryTransport>;
   db: Db;
   raw: Awaited<ReturnType<typeof createTestDb>>["raw"];
   env: Env;
@@ -115,20 +119,32 @@ export interface Backend {
 
 export async function startBackend(
   envOverrides: Record<string, string> = {},
-  extraDeps: { scheduler?: import("../../src/server/routes/context.ts").SchedulerHandle } = {},
+  extraDeps: { scheduler?: import("../../src/server/routes/context.ts").SchedulerHandle; mail?: boolean | "env" } = {},
 ): Promise<Backend> {
   const { db, raw, client: pg } = await createTestDb();
   const env = testEnv(envOverrides);
-  const auth = createAuth({ db, env });
-  const app = createApp({ auth, db, env, ...extraDeps });
+  // `mail: true` liga um mailer em memória (e-mails capturáveis em `be.mail`). `mail: "env"` usa a configuração do ambiente
+  // (provedor "none" ⇒ mailer desligado, como no servidor real). Sem a opção, não há mailer.
+  const memory = createMemoryTransport();
+  const mailer =
+    extraDeps.mail === "env"
+      ? createMailer({ env, log: () => {} })
+      : extraDeps.mail
+        ? createMailer({ env, transport: memory.transport, log: () => {} })
+        : undefined;
+  const auth = createAuth({ db, env, mailer });
+  const { mail: _mail, ...deps } = extraDeps;
+  const app = createApp({ auth, db, env, mailer, ...deps });
   const server: Server = await new Promise((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
+    auth,
     db,
     raw,
     env,
+    mail: memory,
     url,
     client: (origin = APP_URL) => new Client(url, origin),
     close: async () => {

@@ -5,6 +5,7 @@ import { createApp } from "./src/server/app.ts";
 import { createAuth } from "./src/server/auth.ts";
 import { connect, type Connection } from "./src/server/db/client.ts";
 import { createCollector } from "./src/server/collector/collector.ts";
+import { createMailer } from "./src/server/email/mailer.ts";
 import { createScheduler } from "./src/server/collector/scheduler.ts";
 import { runtimeRoleProblems } from "./src/server/db/preflight.ts";
 import { collectDay } from "./src/server/djen/client.ts";
@@ -45,10 +46,13 @@ if (missing.length === 0) {
   } else {
     console.log("Coletor DJEN: desligado neste processo (COLLECTOR_ENABLED != true).");
   }
+  const mailer = createMailer({ env });
+  console.log(`E-mail transacional: ${mailer.enabled ? env.emailProvider : "desligado (recuperação de senha e cadastro por convite indisponíveis)"}.`);
   app = createApp({
-    auth: createAuth({ db: conn.db, env }),
+    auth: createAuth({ db: conn.db, env, mailer }),
     db: conn.db,
     env,
+    mailer,
     scheduler: { enabled: !!scheduler, wake: (org) => scheduler?.wake(org) },
   });
 } else if (env.nodeEnv === "production") {

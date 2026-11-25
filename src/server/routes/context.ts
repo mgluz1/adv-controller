@@ -28,6 +28,8 @@ export interface Deps {
   db: Db;
   env: import("../env.ts").Env;
   scheduler?: SchedulerHandle;
+  /** E-mail transacional (só para saber o que está disponível; o envio é feito dentro do Better Auth). */
+  mailer?: import("../email/mailer.ts").Mailer;
 }
 
 export interface Context {

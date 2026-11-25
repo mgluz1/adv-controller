@@ -9,10 +9,13 @@ import {
   normalizeUf,
   ValidationError,
 } from "../domain/oab.ts";
+import { emailIsTrusted } from "../env.ts";
 import { permissionsOf } from "../permissions.ts";
 import { HttpError, getSession, requireContext, resolveMembership, type Deps } from "./context.ts";
 import { diagnosticsOps } from "./diagnostics.ts";
 import { interestOps } from "./interest.ts";
+import { forwardCookies, viaAuthHandler } from "./authBridge.ts";
+import { inviteOps } from "./invite.ts";
 import { publicationOps } from "./publications.ts";
 import { syncOps } from "./sync.ts";
 
@@ -29,30 +32,20 @@ function errCode(e: unknown): string | undefined {
   return x?.code ?? x?.cause?.code;
 }
 
-/** Encaminha uma chamada ao Better Auth pelo handler completo (mantém limite de taxa e checagem de origem). */
-async function viaAuthHandler(deps: Deps, req: Request, path: string, body: unknown) {
-  const headers = new Headers();
-  for (const [k, v] of Object.entries(req.headers))
-    if (typeof v === "string" && !["content-length", "content-type", "transfer-encoding"].includes(k))
-      headers.set(k, v);
-  headers.set("content-type", "application/json");
-  headers.set("x-forwarded-for", req.ip || "127.0.0.1"); // IP validado pelo Express, não o do cliente
-  return deps.auth.handler(
-    new Request(deps.env.appUrl + path, { method: "POST", headers, body: JSON.stringify(body ?? {}) }),
-  );
-}
-
-function forwardCookies(from: globalThis.Response, res: Response) {
-  for (const c of from.headers.getSetCookie()) res.append("Set-Cookie", c);
-}
-
 type Op = (deps: Deps, req: Request, res: Response, body: Record<string, unknown>) => Promise<unknown>;
 
 const ops: Record<string, Op> = {
   // ── Sessão (contrato existente) ─────────────────────────────────────────────
   async session(deps, req) {
+    // O que está disponível neste servidor (a tela decide o que mostrar: "esqueci a senha", cadastro, etc.).
+    const recursos = {
+      recuperacao_senha: !!deps.mailer?.enabled,
+      cadastro_aberto: deps.env.signupEnabled,
+      cadastro_por_convite: true, // `invite_sign_up`: o link do convite é a prova de posse do e-mail
+      verificacao_email: emailIsTrusted(deps.env),
+    };
     const s = await getSession(deps, req);
-    if (!s) return { usuario: null, escritorio: null, escritorios: [], permissoes: [] };
+    if (!s) return { usuario: null, escritorio: null, escritorios: [], permissoes: [], recursos };
     const memberships = await deps.db
       .select({
         id: schema.organization.id,
@@ -68,6 +61,7 @@ const ops: Record<string, Op> = {
       escritorio: m ? { id: m.organizationId, nome: m.organizationName, papel: m.role } : null,
       escritorios: memberships,
       permissoes: m ? permissionsOf(m.role) : [],
+      recursos,
     };
   },
 
@@ -169,6 +163,7 @@ const ops: Record<string, Op> = {
   ...syncOps,
   ...diagnosticsOps,
   ...interestOps,
+  ...inviteOps,
 
   // ── Auditoria ───────────────────────────────────────────────────────────────
   async audit_list(deps, req) {
