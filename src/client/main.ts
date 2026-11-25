@@ -6,7 +6,8 @@ import {
   executarRemocaoLote,
   dispararSincronizacaoManual,
   obterDiagnosticoSistema,
-  haSessaoAtiva,
+  obterSessao,
+  temPermissao,
   entrar,
   sair,
   restaurarPublicacao,
@@ -15,7 +16,10 @@ import {
   PublicacaoItem,
   ListarPublicacoesResponse,
   AbaInfo,
+  Sessao,
 } from "./api.js";
+import { fecharConta, rotaPublica, telaCriarEscritorio, telaRecuperar } from "./conta.ts";
+import { abrirConfig, montarCabecalho } from "./config.ts";
 
 // =========================================================================
 // UTILITÁRIO DE ESCAPE XSS (SEGURANÇA DE CONTEÚDO EXTERNO)
@@ -76,6 +80,7 @@ const state: AppState = {
 let dadosAtuais: ListarPublicacoesResponse | null = null;
 // Variação visual do marcador de cada advogado (0–3), pela ordem das abas.
 let corPorAdvogado = new Map<string, number>();
+let sessaoApp: Sessao | null = null;
 let buscaDebounceTimer: any = null;
 let loadSequence = 0;
 
@@ -169,6 +174,18 @@ function renderizarInterface() {
 
   // 3. Renderizar Linhas da Tabela
   renderizarTabela(dadosAtuais.publicacoes, dadosAtuais.total);
+
+  // Escritório novo, sem OABs: leva direto ao cadastro (uma vez por sessão do navegador; depois fica o atalho na tela vazia).
+  if (dadosAtuais.abas.length === 0 && sessaoApp && temPermissao(sessaoApp, "attorney:create")) {
+    let jaAbriu = false;
+    try {
+      jaAbriu = sessionStorage.getItem("advc:config-primeira-oab") === "1";
+      sessionStorage.setItem("advc:config-primeira-oab", "1");
+    } catch {
+      /* armazenamento indisponível: abre mesmo assim, uma vez por carga */
+    }
+    if (!jaAbriu) abrirConfig("oabs");
+  }
 
   const tribunais = document.getElementById(
     "filter-tribunal",
@@ -321,6 +338,9 @@ function renderizarTabela(publicacoes: PublicacaoItem[], total: number) {
   const tbody = document.getElementById("tbody-publicacoes");
   const emptyState = document.getElementById("empty-state");
   if (!tbody || !emptyState) return;
+
+  const passos = document.getElementById("empty-primeiros-passos");
+  if (passos) passos.hidden = !(dadosAtuais && dadosAtuais.abas.length === 0 && sessaoApp && temPermissao(sessaoApp, "attorney:create"));
 
   if (total === 0) {
     tbody.innerHTML = "";
@@ -732,17 +752,41 @@ document.addEventListener("DOMContentLoaded", async () => {
   document
     .getElementById("btn-sair")!
     .addEventListener("click", () => void sair());
-  let authenticated = false;
+  // Links de e-mail (/convite/<id>, /redefinir-senha) têm as suas próprias telas, com ou sem sessão.
   try {
-    authenticated = await haSessaoAtiva();
+    if (await rotaPublica()) return;
   } catch (err: any) {
     message.textContent = err.message;
   }
-  if (!authenticated) {
+  let sessao: Sessao | null = null;
+  try {
+    sessao = await obterSessao(true);
+  } catch (err: any) {
+    message.textContent = err.message;
+  }
+  if (!sessao?.usuario) {
     login.classList.add("modal-visible");
+    const esqueci = document.getElementById("login-esqueci");
+    if (esqueci && sessao?.recursos.recuperacao_senha) {
+      esqueci.hidden = false;
+      esqueci.addEventListener("click", () =>
+        telaRecuperar(() => {
+          fecharConta();
+          login.classList.add("modal-visible");
+        }),
+      );
+    }
     return;
   }
   login.classList.remove("modal-visible");
+  // Primeiro acesso: sem escritório não há dados. Cria o escritório (ou usa o link de um convite).
+  if (!sessao.escritorio) {
+    telaCriarEscritorio(sessao);
+    return;
+  }
+  sessaoApp = sessao;
+  montarCabecalho(sessao);
+  document.getElementById("btn-primeira-oab")?.addEventListener("click", () => abrirConfig("oabs"));
   document
     .getElementById("filter-tribunal")!
     .addEventListener("change", (e) => {

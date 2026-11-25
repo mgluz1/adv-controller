@@ -2193,6 +2193,59 @@
           transition: none !important;
         }
       }
+
+      /* ===== Fase 2: escritório, configurações, telas de conta ===== */
+      .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      [hidden] { display: none !important; }
+      .office-bar { display: inline-flex; align-items: center; gap: 8px; color: var(--sobre-escuro); font-size: 13px; }
+      .office-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+      .office-select { height: 32px; max-width: 240px; padding: 0 8px; border-radius: var(--raio-controle); border: 1px solid var(--fio-escuro); background: transparent; color: var(--sobre-escuro); font-size: 13px; }
+      .office-select option { color: var(--texto); background: var(--branco); }
+      .login-link { background: none; border: none; padding: 0; margin-top: 14px; color: var(--verde); font-size: 13px; text-decoration: underline; cursor: pointer; align-self: flex-start; }
+      .login-link:hover { color: var(--verde-profundo); }
+      .login-ok { margin-top: 14px; padding: 10px 12px; border-radius: var(--raio-controle); background: var(--verde-tinta); color: var(--verde-profundo); font-size: 13px; line-height: 1.45; }
+      .login-card .conta-lista { margin: 14px 0 0; padding: 0; list-style: none; font-size: 14px; color: var(--texto-2); }
+      .login-card .conta-lista li { padding: 4px 0; }
+      .login-card .conta-acoes { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+      .login-field input[readonly] { background: var(--linha-hover); color: var(--texto-2); }
+
+      .modal-dialog-config { max-width: 980px; width: 100%; max-height: 90vh; overflow: hidden; padding: 0; gap: 0; }
+      .config-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 0; }
+      .config-head h2 { margin: 0; font-size: 18px; color: var(--verde-profundo); }
+      .config-tabs { display: flex; gap: 4px; padding: 12px 24px 0; border-bottom: 1px solid var(--divisoria); overflow-x: auto; }
+      .config-tab { height: 38px; padding: 0 14px; background: none; border: none; border-bottom: 3px solid transparent; font-size: 14px; font-weight: 500; color: var(--texto-2); cursor: pointer; white-space: nowrap; }
+      .config-tab:hover { color: var(--verde); }
+      .config-tab[aria-selected="true"] { color: var(--verde-profundo); border-bottom-color: var(--dourado); font-weight: 600; }
+      .config-body { padding: 20px 24px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+      .config-body h3 { margin: 0 0 4px; font-size: 15px; color: var(--verde-profundo); }
+      .config-help { margin: 0; font-size: 13px; line-height: 1.5; color: var(--texto-2); }
+      .config-msg { min-height: 18px; margin: 0; font-size: 13px; color: var(--pendente-texto); }
+      .config-msg.ok { color: var(--verde); }
+      .config-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 14px; border: 1px solid var(--divisoria); border-radius: var(--raio-controle); background: var(--linha-hover); }
+      .config-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--texto-2); }
+      .config-form input, .config-form select, .config-select { height: 36px; padding: 0 10px; border-radius: var(--raio-controle); border: 1px solid var(--borda-controle); background: var(--branco); font-size: 14px; color: var(--texto); min-width: 0; }
+      .config-form input:focus, .config-form select:focus, .config-select:focus { border-color: var(--verde); }
+      .config-form .grow { flex: 1 1 220px; }
+      .config-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      .config-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--texto-2); padding: 8px 10px; border-bottom: 1px solid var(--divisoria); }
+      .config-table td { padding: 10px; border-bottom: 1px solid var(--divisoria-leve); vertical-align: middle; }
+      .config-table td.acoes { text-align: right; white-space: nowrap; }
+      .config-table tr.inativa td { color: var(--texto-2); }
+      .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--analise-borda); background: var(--analise-fundo); color: var(--analise-texto); }
+      .pill.off { border-color: var(--concluida-borda); background: var(--concluida-fundo); color: var(--concluida-texto); }
+      .pill.pend { border-color: var(--revisar-borda); background: var(--revisar-fundo); color: var(--revisar-texto); }
+      .btn-mini { height: 30px; padding: 0 10px; font-size: 12px; }
+      .config-vazio { padding: 16px; text-align: center; color: var(--texto-2); font-size: 14px; border: 1px dashed var(--divisoria); border-radius: var(--raio-controle); }
+      .copy-box { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: var(--raio-controle); background: var(--verde-tinta); }
+      .copy-box input { flex: 1; min-width: 0; height: 34px; padding: 0 8px; border: 1px solid var(--borda-controle); border-radius: var(--raio-controle); background: var(--branco); font-size: 13px; }
+      @media (max-width: 720px) {
+        .config-table thead { display: none; }
+        .config-table, .config-table tbody, .config-table tr, .config-table td { display: block; width: 100%; }
+        .config-table tr { padding: 8px 0; border-bottom: 1px solid var(--divisoria); }
+        .config-table td { border: none; padding: 4px 0; }
+        .config-table td.acoes { text-align: left; }
+        .office-name { display: none; }
+      }
     </style>
   </head>
   <body>
@@ -2207,6 +2260,16 @@
           </div>
 
           <div class="header-actions">
+            <!-- Escritório ativo (seletor quando o usuário pertence a mais de um) -->
+            <div id="office-bar" class="office-bar" hidden>
+              <span id="office-name" class="office-name"></span>
+              <label class="sr-only" for="office-select">Escritório ativo</label>
+              <select id="office-select" class="office-select" hidden></select>
+            </div>
+            <button id="btn-abrir-config" class="btn-header-outline" title="OABs, termos de interesse e equipe do escritório" hidden>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+              <span>Configurações</span>
+            </button>
             <!-- Botão de Diagnóstico Administrativo -->
             <button id="btn-abrir-diagnostico" class="btn-header-outline" title="Abrir painel de diagnóstico administrativo do sistema, banco de dados e conexão CNJ">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -2353,6 +2416,7 @@
         <div id="empty-state" class="empty-state" style="display: none;">
           <svg class="empty-state-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="29" height="29" rx="8"/><path d="M9.5 23 16 9l6.5 14M12 19h8"/></svg>
           <p>Nenhuma publicação processual encontrada para os filtros selecionados.</p>
+          <p id="empty-primeiros-passos" hidden>Este escritório ainda não tem OABs monitoradas. <button type="button" id="btn-primeira-oab" class="login-link" style="margin-top:0">Cadastrar a primeira OAB</button></p>
         </div>
       </main>
 
@@ -2486,12 +2550,49 @@
             <p id="login-message" role="alert"></p>
 
             <button class="btn-primary login-submit" type="submit">Entrar</button>
+            <button type="button" id="login-esqueci" class="login-link" hidden>Esqueci minha senha</button>
 
             <p class="login-note">Acesso restrito a usuários autorizados.</p>
           </form>
         </section>
       </div>
     </div>
+    <!-- Telas de conta (convite, recuperar/redefinir senha, criar escritório): o conteúdo é montado por src/client/conta.ts -->
+    <div id="modal-conta" class="modal-backdrop login-screen" role="dialog" aria-modal="true" aria-labelledby="conta-titulo">
+      <div class="login-shell">
+        <aside class="login-brand">
+          <div class="login-brand-inner">
+            <svg class="login-emblem" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="1.5" width="29" height="29" rx="8"/><path d="M9.5 23 16 9l6.5 14M12 19h8"/></svg>
+            <p class="login-wordmark" aria-hidden="true">
+              <span class="login-wordmark-name">Adv Controller</span>
+              <span class="login-wordmark-sub">Gestão de publicações para escritórios</span>
+            </p>
+            <span class="login-rule" aria-hidden="true"></span>
+            <p class="login-product">Monitoramento de Publicações Processuais</p>
+          </div>
+        </aside>
+        <section class="login-panel">
+          <div id="conta-painel" class="login-card" aria-live="polite"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Configurações do escritório: OABs, termos de interesse e equipe (src/client/config.ts) -->
+    <div id="modal-config" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="config-titulo">
+      <div class="modal-dialog modal-dialog-config">
+        <div class="config-head">
+          <h2 id="config-titulo">Configurações do escritório</h2>
+          <button class="modal-close-btn" id="btn-fechar-config" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="config-tabs" role="tablist" aria-label="Seções das configurações">
+          <button class="config-tab" role="tab" id="tab-oabs" data-tab="oabs" aria-selected="true">OABs</button>
+          <button class="config-tab" role="tab" id="tab-termos" data-tab="termos" aria-selected="false">Termos de interesse</button>
+          <button class="config-tab" role="tab" id="tab-equipe" data-tab="equipe" aria-selected="false">Equipe e convites</button>
+        </div>
+        <div id="config-corpo" class="config-body" role="tabpanel"></div>
+      </div>
+    </div>
+
  <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

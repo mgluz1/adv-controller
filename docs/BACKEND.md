@@ -152,7 +152,7 @@ Um usuário pode ter papéis diferentes em escritórios diferentes e trocar o es
    as mesmas restrições existem como `CHECK` no banco. Consultas 100% parametrizadas.
 10. **Cadastro aberto não é o padrão em produção** (`AUTH_SIGNUP_ENABLED` ausente ⇒ falso).
 
-## Testes (285 de servidor/unidade + 3 E2E; todos locais)
+## Testes (289 de servidor/unidade + 24 E2E; todos locais)
 
 Rodam contra **Postgres real em PGlite** aplicando as migrações versionadas — sem rede e sem tocar
 o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, servidor próprio sem banco).
@@ -183,6 +183,18 @@ o Neon. `npm test` (unitários + servidor) e `npm run test:e2e` (navegador, serv
 Os testes de negação têm **controles positivos** (a mesma chamada, com o papel certo, funciona), e as
 camadas de isolamento foram validadas por mutação (remover `SET ROLE` ou a revalidação de associação
 derruba os testes).
+
+## Interface de conta e gestão (Fase 2)
+
+Código em `src/client/{util,conta,config,api,transport}.ts`; marcação em `index.html`.
+
+- **Rotas públicas** (resolvidas por `rotaPublica()` antes de qualquer chamada autenticada): `/redefinir-senha?token=…` (o token sai da barra de endereço após o uso), `/convite/<id>` (quatro estados: sem conta, com conta, logado com o mesmo e-mail, logado com outro e-mail) e "Esqueci minha senha" no login (só aparece se `session.recursos.recuperacao_senha`).
+- **Onboarding:** usuário sem escritório vê "Crie o seu escritório" (identificador gerado e único, com nova tentativa se já existir).
+- **Cabeçalho:** nome do escritório ou seletor quando há mais de um; botão **Configurações** com abas *OABs*, *Termos de interesse* e *Equipe e convites*. Todos os controles são condicionados às permissões devolvidas por `session` (o servidor continua sendo quem decide; a UI só esconde o que daria 403).
+- **Primeiros passos:** sem OABs e com permissão de cadastro, Configurações→OABs abre uma vez por sessão do navegador e a tela vazia mostra um atalho.
+- **Sem provedor de e-mail** a aba Equipe avisa que o sistema não envia e-mails e mostra o link do convite para o proprietário compartilhar.
+- **Segurança da UI:** todo texto vindo do servidor passa por `escapeHtml`; erros do servidor são traduzidos por `traduzirErro` (nunca exibe a mensagem em inglês do Better Auth).
+- **Testes:** `tests/client-util.test.ts` (funções puras) e `tests/browser/conta.spec.ts` (20 cenários E2E com API falsa com estado). Mutação aplicada em 8 regras críticas (permissões, escape, papel atribuível, e-mail fixo do convite, token fora da URL, confirmação ao remover, comparação de e-mail sem caixa, nova tentativa de identificador): todas mortas.
 
 ## Migração para o Neon — plano para aprovação (NADA foi aplicado)
 

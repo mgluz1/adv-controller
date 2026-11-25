@@ -22,7 +22,13 @@ async function interceptarApi(
     const corpo = route.request().postDataJSON() || {};
     let data: unknown;
     if (nome === "session")
-      data = { usuario: logado ? { id: "u1", email: "fixture@example.invalid" } : null };
+      data = {
+        usuario: logado ? { id: "u1", email: "fixture@example.invalid" } : null,
+        escritorio: logado ? { id: "org-1", nome: "Escritório Teste", papel: "owner" } : null,
+        escritorios: logado ? [{ id: "org-1", nome: "Escritório Teste", papel: "owner" }] : [],
+        permissoes: logado ? ["attorney:create", "attorney:update", "attorney:read", "publication:read"] : [],
+        recursos: { recuperacao_senha: false, cadastro_aberto: false, cadastro_por_convite: true, verificacao_email: false },
+      };
     else if (nome === "sign-in") {
       logado = true;
       data = { ok: true };

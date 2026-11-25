@@ -1,4 +1,4 @@
-import { chamar } from "./transport.ts";
+import { chamar, chamarAuth } from "./transport.ts";
 
 // Camada de dados do painel. Toda comunicação com o backend passa por `chamar()` (transport.ts).
 // As operações abaixo mantêm os nomes e formatos das RPCs do sistema de origem para preservar o
@@ -83,9 +83,42 @@ const rpc = (name: string, args: Record<string, unknown> = {}) =>
   chamar<any>(name, args);
 
 // --- Autenticação (provisória; trocar pelo Better Auth) ---
+export interface EscritorioRef {
+  id: string;
+  nome: string;
+  papel: string;
+}
+export interface Recursos {
+  recuperacao_senha: boolean;
+  cadastro_aberto: boolean;
+  cadastro_por_convite: boolean;
+  verificacao_email: boolean;
+}
+export interface Sessao {
+  usuario: { id: string; nome?: string; email: string } | null;
+  escritorio: EscritorioRef | null;
+  escritorios: EscritorioRef[];
+  permissoes: string[];
+  recursos: Recursos;
+}
+const SEM_RECURSOS: Recursos = { recuperacao_senha: false, cadastro_aberto: false, cadastro_por_convite: false, verificacao_email: false };
+let sessaoAtual: Sessao | null = null;
+/** Sessão completa (usuário, escritório ativo, papel, permissões e o que o servidor oferece). Tolera servidores antigos. */
+export async function obterSessao(forcar = false): Promise<Sessao> {
+  if (sessaoAtual && !forcar) return sessaoAtual;
+  const r = await chamar<Partial<Sessao>>("session");
+  sessaoAtual = {
+    usuario: r.usuario ?? null,
+    escritorio: r.escritorio ?? null,
+    escritorios: r.escritorios ?? [],
+    permissoes: r.permissoes ?? [],
+    recursos: { ...SEM_RECURSOS, ...(r.recursos ?? {}) },
+  };
+  return sessaoAtual;
+}
+export const temPermissao = (s: Sessao, p: string) => s.permissoes.includes(p);
 export async function haSessaoAtiva(): Promise<boolean> {
-  const r = await chamar<{ usuario: unknown | null }>("session");
-  return !!r.usuario;
+  return !!(await obterSessao(true)).usuario;
 }
 export async function entrar(email: string, password: string) {
   await chamar("sign-in", { email: email.trim().toLowerCase(), password });
@@ -308,3 +341,77 @@ export async function obterDiagnosticoSistema() {
     source_check: any | null;
   };
 }
+
+// --- OABs do escritório ---
+export interface Oab {
+  id: string;
+  name: string;
+  oab_number: string;
+  uf: string;
+  active: boolean;
+}
+export const listarOabs = async () => (await chamar<{ oabs: Oab[] }>("oab_list")).oabs;
+export const criarOab = async (name: string, oab_number: string, uf: string) => (await chamar<{ oab: Oab }>("oab_create", { name, oab_number, uf })).oab;
+export const atualizarOab = async (id: string, patch: { name?: string; active?: boolean }) => (await chamar<{ oab: Oab }>("oab_update", { id, ...patch })).oab;
+
+// --- Termos de interesse ---
+export interface Termo {
+  id: string;
+  term: string;
+  kind: "sigla" | "expressao";
+  active: boolean;
+  attorney_id: string | null;
+}
+export const listarTermos = async () => (await chamar<{ terms: Termo[] }>("interest_list")).terms;
+export const criarTermo = async (term: string, attorney_id: string | null) =>
+  (await chamar<{ term: Termo }>("interest_create", { term, ...(attorney_id ? { attorney_id } : {}) })).term;
+export const atualizarTermo = async (id: string, patch: { term?: string; active?: boolean; attorney_id?: string | null }) =>
+  (await chamar<{ term: Termo }>("interest_update", { id, ...patch })).term;
+
+// --- Equipe e convites (Better Auth: organização) ---
+export interface Membro {
+  id: string;
+  role: string;
+  user: { id: string; name: string; email: string };
+}
+export interface ConviteEnviado {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expiresAt: string;
+}
+export interface EscritorioCompleto {
+  id: string;
+  name: string;
+  members: Membro[];
+  invitations: ConviteEnviado[];
+}
+export const obterEscritorioCompleto = () => chamarAuth<EscritorioCompleto>("/organization/get-full-organization", undefined, "GET");
+export const convidarMembro = (email: string, role: string) => chamarAuth<ConviteEnviado>("/organization/invite-member", { email: email.trim().toLowerCase(), role });
+export const cancelarConvite = (invitationId: string) => chamarAuth("/organization/cancel-invitation", { invitationId });
+export const alterarPapelMembro = (memberId: string, role: string) => chamarAuth("/organization/update-member-role", { memberId, role });
+export const removerMembro = (memberIdOrEmail: string) => chamarAuth("/organization/remove-member", { memberIdOrEmail });
+export const renomearEscritorio = (name: string) => chamarAuth("/organization/update", { data: { name } });
+
+// --- Escritórios do usuário ---
+export async function criarEscritorio(nome: string, slug: string) {
+  return chamarAuth<{ id: string }>("/organization/create", { name: nome, slug });
+}
+export const trocarEscritorio = (organizationId: string) => chamarAuth("/organization/set-active", { organizationId });
+
+// --- Conta: recuperação de senha e convite por link ---
+export const solicitarRedefinicao = (email: string) =>
+  chamarAuth("/request-password-reset", { email: email.trim().toLowerCase(), redirectTo: `${location.origin}/redefinir-senha` });
+export const redefinirSenha = (newPassword: string, token: string) => chamarAuth("/reset-password", { newPassword, token });
+export interface InfoConvite {
+  organization: string;
+  inviter: string;
+  role: string;
+  email: string;
+  expires_at: string;
+  account_exists: boolean;
+}
+export const infoConvite = (id: string) => chamar<InfoConvite>("invite_info", { id });
+export const cadastrarPeloConvite = (id: string, name: string, password: string) => chamar<{ ok: boolean; email: string }>("invite_sign_up", { id, name, password });
+export const aceitarConvite = (invitationId: string) => chamarAuth("/organization/accept-invitation", { invitationId });
