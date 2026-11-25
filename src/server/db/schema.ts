@@ -412,8 +412,12 @@ export const syncRuns = pgTable(
 ).enableRLS();
 
 /**
- * Termos de interesse por escritório (substitui a "sigla fixa" do sistema de origem).
- * A regra de casamento (REGRAS §6) é uma função única, usada por linhas E contadores; vem na tarefa 1.6.
+ * Termos de interesse por escritório (substitui a "sigla fixa" do sistema de origem). REGRAS §6.
+ *  - `term`: como o usuário digitou (normalizado). `pattern`: expressão regular de casamento calculada em
+ *    src/server/domain/interest.ts (única função de casamento; linhas e contadores usam o mesmo predicado).
+ *  - `attorney_id` (opcional): advogado a cuja aba o termo pertence. Publicação que casa NÃO aparece na aba dele (só em
+ *    "Termos de interesse" e nas abas dos demais advogados vinculados); o vínculo em si nunca é alterado. Sem advogado, o termo
+ *    só alimenta a aba "Termos de interesse".
  */
 export const interestTerms = pgTable(
   "interest_terms",
@@ -423,6 +427,8 @@ export const interestTerms = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     term: text("term").notNull(),
+    pattern: text("pattern").notNull(),
+    attorneyId: uuid("attorney_id"),
     active: boolean("active").notNull().default(true),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: ts("created_at").notNull().defaultNow(),
@@ -430,8 +436,16 @@ export const interestTerms = pgTable(
   },
   (t) => [
     uniqueIndex("interest_terms_org_term_unique").on(t.organizationId, sql`lower(${t.term})`),
+    // "A.B.C.D." e "A. B. C. D." são o mesmo termo: o que vale é o padrão efetivo.
+    uniqueIndex("interest_terms_org_pattern_unique").on(t.organizationId, t.pattern),
+    foreignKey({
+      name: "interest_terms_attorney_fk",
+      columns: [t.organizationId, t.attorneyId],
+      foreignColumns: [attorneys.organizationId, attorneys.id],
+    }).onDelete("cascade"),
     index("interest_terms_org_idx").on(t.organizationId),
     check("interest_terms_term_chk", sql`char_length(${t.term}) between 2 and 80 and ${t.term} !~ '[[:cntrl:]]'`),
+    check("interest_terms_pattern_chk", sql`char_length(${t.pattern}) between 1 and 1000`),
   ],
 ).enableRLS();
 

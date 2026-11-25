@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { and, asc, desc, eq, exists, ilike, inArray, isNotNull, isNull, gte, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, exists, ilike, inArray, isNotNull, isNull, gte, lte, not, or, sql, type Column, type SQL } from "drizzle-orm";
 import * as schema from "../db/schema.ts";
 import { withTenant } from "../db/tenant.ts";
 import {
@@ -11,6 +11,7 @@ import {
   type ListFilter,
 } from "../domain/publications.ts";
 import { can, type Action } from "../permissions.ts";
+import { collectionSummary } from "./diagnostics.ts";
 import { HttpError, requireContext, type Deps } from "./context.ts";
 
 type PublicationAction = Action<"publication">;
@@ -32,6 +33,17 @@ type Op = (deps: Deps, req: Request, res: Response, body: Record<string, unknown
 const P = schema.publications;
 const PA = schema.publicationAttorneys;
 
+/**
+ * Predicado ÚNICO de casamento com os termos de interesse ATIVOS do escritório (REGRAS §6): o padrão de cada termo
+ * (domain/interest.ts) é avaliado no teor OU nos nomes dos destinatários, sem diferenciar maiúsculas. Linhas da lista e
+ * contadores de aba usam exatamente este SQL. Com `attorney`, só os termos que pertencem à aba daquele advogado.
+ */
+export function interestMatch(attorney?: SQL | Column | string): SQL {
+  const names = sql`(case when jsonb_typeof(${P.recipients}) = 'array' then (select string_agg(r ->> 'nome', E'\n') from jsonb_array_elements(${P.recipients}) r) end)`;
+  const own = attorney === undefined ? sql`` : sql`and it.attorney_id = ${attorney}`;
+  return sql`exists (select 1 from ${schema.interestTerms} it where it.active ${own} and (${P.originalText} ~* it.pattern or coalesce(${names}, '') ~* it.pattern))`;
+}
+
 function conditions(f: ListFilter, opts: { status: boolean; attorney: boolean }): SQL[] {
   const c: SQL[] = [isNull(P.removedAt), f.archived ? isNotNull(P.archivedAt) : isNull(P.archivedAt)];
   if (f.tribunal) c.push(eq(P.tribunal, f.tribunal));
@@ -42,11 +54,13 @@ function conditions(f: ListFilter, opts: { status: boolean; attorney: boolean })
     c.push(or(ilike(P.processNumber, like), ilike(P.processMask, like), ilike(P.tribunal, like), ilike(P.originalText, like))!);
   }
   if (opts.status && f.status !== "todos") c.push(eq(P.status, f.status));
-  if (opts.attorney && f.attorney !== "todos")
+  if (opts.attorney && f.attorney === "interesse") c.push(interestMatch());
+  else if (opts.attorney && f.attorney !== "todos")
+    // Aba do advogado: as publicações vinculadas a ele, MENOS as que casam com termos que pertencem à aba dele
+    // (elas aparecem em "Termos de interesse"; o vínculo não é alterado e vale nas abas dos demais advogados).
     c.push(
-      exists(
-        sql`(select 1 from ${PA} where ${PA.publicationId} = ${P.id} and ${PA.attorneyId} = ${f.attorney})`,
-      ),
+      exists(sql`(select 1 from ${PA} where ${PA.publicationId} = ${P.id} and ${PA.attorneyId} = ${f.attorney})`),
+      not(interestMatch(f.attorney)),
     );
   return c;
 }
@@ -129,8 +143,12 @@ async function djen_list(deps: Deps, req: Request, _res: Response, body: Record<
       .select({ id: PA.attorneyId, total: counts().total, revisar: counts().revisar })
       .from(PA)
       .innerJoin(P, eq(P.id, PA.publicationId))
-      .where(tabWhere)
+      .where(and(tabWhere, not(interestMatch(PA.attorneyId))))
       .groupBy(PA.attorneyId);
+
+    // Aba "Termos de interesse": só existe se o escritório tem ao menos um termo ativo.
+    const [{ terms }] = await tx.select({ terms: sql<number>`count(*)::int` }).from(schema.interestTerms).where(eq(schema.interestTerms.active, true));
+    const [interesse] = terms > 0 ? await tx.select({ total: counts().total, revisar: counts().revisar }).from(P).where(and(tabWhere, interestMatch())) : [];
 
     // Abas: OABs ativas + inativas que ainda têm publicações vivas (o histórico continua acessível).
     const attorneys = await tx
@@ -159,37 +177,13 @@ async function djen_list(deps: Deps, req: Request, _res: Response, body: Record<
       .where(and(isNull(P.removedAt), f.archived ? isNotNull(P.archivedAt) : isNull(P.archivedAt), isNotNull(P.tribunal)))
       .orderBy(asc(P.tribunal));
 
-    // Coleta (diagnóstico resumido). Sem coletor ainda: tudo nulo/zero, sem inventar dados.
-    const [latest] = await tx.select().from(schema.syncRuns).orderBy(desc(schema.syncRuns.startedAt)).limit(1);
-    const [ok] = await tx
-      .select({ at: sql<Date | null>`max(${schema.syncRuns.finishedAt})` })
-      .from(schema.syncRuns)
-      .where(eq(schema.syncRuns.status, "sucesso"));
-    const [cur] = await tx
-      .select({
-        due: sql<Date | null>`min(${schema.syncCursors.nextDueAt})`,
-        pending: sql<number>`coalesce(sum(greatest(0, (${schema.syncCursors.targetDay} - ${schema.syncCursors.scanDay}) + 1)), 0)::int`,
-      })
-      .from(schema.syncCursors)
-      .innerJoin(schema.attorneys, eq(schema.attorneys.id, schema.syncCursors.attorneyId))
-      .where(
-        and(
-          eq(schema.attorneys.active, true),
-          isNotNull(schema.syncCursors.scanDay),
-          isNotNull(schema.syncCursors.targetDay),
-        ),
-      );
-    // `due` considera só OABs ativas; separado porque pending exige as duas datas.
-    const [nextDue] = await tx
-      .select({ due: sql<Date | null>`min(${schema.syncCursors.nextDueAt})` })
-      .from(schema.syncCursors)
-      .innerJoin(schema.attorneys, eq(schema.attorneys.id, schema.syncCursors.attorneyId))
-      .where(eq(schema.attorneys.active, true));
+    const summary = await collectionSummary(tx);
 
     const tab_stats: Record<string, { total: number; revisar: number }> = {
       todos: { total: todos.total, revisar: todos.revisar },
     };
     for (const a of attorneys) tab_stats[a.id] = { total: stat.get(a.id)?.total ?? 0, revisar: stat.get(a.id)?.revisar ?? 0 };
+    if (interesse) tab_stats.interesse = { total: interesse.total, revisar: interesse.revisar };
 
     return {
       total,
@@ -198,22 +192,7 @@ async function djen_list(deps: Deps, req: Request, _res: Response, body: Record<
       attorney_stats: attorneys.map((a) => ({ ...a, total: tab_stats[a.id].total, revisar: tab_stats[a.id].revisar })),
       tab_stats,
       tribunals,
-      pending_windows: cur?.pending ?? 0,
-      latest: latest
-        ? {
-            id: latest.id,
-            attorney_id: latest.attorneyId,
-            window_day: latest.windowDay,
-            trigger: latest.trigger,
-            status: latest.status,
-            started_at: latest.startedAt,
-            finished_at: latest.finishedAt,
-            http_status: latest.httpStatus,
-            error_message: latest.errorMessage,
-          }
-        : null,
-      last_success: ok?.at ?? null,
-      next_due: nextDue?.due ?? null,
+      ...summary,
     };
   });
 }

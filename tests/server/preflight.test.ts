@@ -16,7 +16,7 @@ const fresh = () => {
 
 test("migrações versionadas: ordem, hashes e instruções", () => {
   const m = readMigrations();
-  assert.deepEqual(m.map((x) => x.tag), ["0000_base", "0001_tenant_security", "0002_runtime_role", "0003_publications", "0004_publications_security"]);
+  assert.deepEqual(m.map((x) => x.tag), ["0000_base", "0001_tenant_security", "0002_runtime_role", "0003_publications", "0004_publications_security", "0005_interest_terms_matching"]);
   assert.ok(m.every((x) => /^[0-9a-f]{64}$/.test(x.hash) && x.statements.length > 0));
   assert.ok(m.every((x, i) => i === 0 || m[i - 1].when < x.when));
 });
@@ -25,7 +25,7 @@ test("banco vazio: destino aprovado e todas as migrações pendentes", async () 
   const { q, client } = fresh();
   const v = judge(await inspect(q), readMigrations());
   assert.equal(v.ok, true, v.problems.join("; "));
-  assert.equal(v.pending.length, 5);
+  assert.equal(v.pending.length, 6);
   await client.close();
 });
 

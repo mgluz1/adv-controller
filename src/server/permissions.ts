@@ -5,8 +5,8 @@
  *
  * Papéis (por escritório; um usuário pode ter papéis diferentes em escritórios diferentes):
  *  - owner  : tudo, inclusive excluir o escritório e promover donos.
- *  - admin  : gerencia membros, convites, OABs e coleta; não exclui o escritório nem mexe em donos.
- *  - member : opera as publicações (revisar, arquivar, restaurar); só lê as OABs.
+ *  - admin  : gerencia membros, convites, OABs, termos de interesse e coleta; não exclui o escritório nem mexe em donos.
+ *  - member : opera as publicações (revisar, arquivar, restaurar); só lê as OABs e os termos de interesse.
  *  - viewer : somente leitura.
  */
 import { createAccessControl } from "better-auth/plugins/access";
@@ -18,6 +18,7 @@ export const statements = {
   attorney: ["read", "create", "update"],
   publication: ["read", "review", "archive", "restore", "discard"],
   sync: ["read", "request"],
+  interest: ["read", "create", "update"],
   audit: ["read"],
 } as const;
 
@@ -34,6 +35,7 @@ export const roles = {
     attorney: ["read", "create", "update"],
     publication: ["read", "review", "archive", "restore", "discard"],
     sync: ["read", "request"],
+    interest: ["read", "create", "update"],
     audit: ["read"],
   }),
   admin: ac.newRole({
@@ -43,17 +45,20 @@ export const roles = {
     attorney: ["read", "create", "update"],
     publication: ["read", "review", "archive", "restore", "discard"],
     sync: ["read", "request"],
+    interest: ["read", "create", "update"],
     audit: ["read"],
   }),
   member: ac.newRole({
     attorney: ["read"],
     publication: ["read", "review", "archive", "restore"],
     sync: ["read"],
+    interest: ["read"],
   }),
   viewer: ac.newRole({
     attorney: ["read"],
     publication: ["read"],
     sync: ["read"],
+    interest: ["read"],
   }),
 };
 

@@ -11,6 +11,8 @@ import {
 } from "../domain/oab.ts";
 import { permissionsOf } from "../permissions.ts";
 import { HttpError, getSession, requireContext, resolveMembership, type Deps } from "./context.ts";
+import { diagnosticsOps } from "./diagnostics.ts";
+import { interestOps } from "./interest.ts";
 import { publicationOps } from "./publications.ts";
 import { syncOps } from "./sync.ts";
 
@@ -18,9 +20,6 @@ import { syncOps } from "./sync.ts";
  * Contrato do painel: `POST /api/v1/<operacao>` (ver src/client/transport.ts e docs/MIGRACAO.md §3).
  * `organization_id` NUNCA é aceito do cliente: o escritório vem da sessão + associação revalidada.
  */
-
-/** Operações do contrato que dependem de fases futuras (coletor DJEN). */
-const NEXT_PHASE = new Set(["djen_diagnostics"]);
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -168,6 +167,8 @@ const ops: Record<string, Op> = {
   // ── Publicações (djen_list, djen_mutate, djen_archive_preview) ─────────────────────
   ...publicationOps,
   ...syncOps,
+  ...diagnosticsOps,
+  ...interestOps,
 
   // ── Auditoria ───────────────────────────────────────────────────────────────
   async audit_list(deps, req) {
@@ -209,11 +210,6 @@ export function createV1Router(deps: Deps) {
       const name = req.params.op;
       const op = Object.hasOwn(ops, name) ? ops[name] : undefined;
       if (op) return void res.json(await op(deps, req, res, body));
-      if (NEXT_PHASE.has(name)) {
-        // Autentica antes de responder: nem o estado "não implementado" é exposto a anônimos.
-        await requireContext(deps, req);
-        throw new HttpError(501, "Disponível na próxima fase (coletor DJEN).");
-      }
       throw new HttpError(404, "Operação desconhecida.");
     } catch (e) {
       next(e);

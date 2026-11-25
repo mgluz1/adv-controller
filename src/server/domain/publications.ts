@@ -33,7 +33,7 @@ export function parseDay(value: unknown, label = "data"): string {
 }
 
 export interface ListFilter {
-  /** "todos" ou o id (uuid) de uma OAB. A aba "interesse" chega na tarefa 1.6. */
+  /** "todos", "interesse" (aba de termos de interesse) ou o id (uuid) de uma OAB. */
   attorney: "todos" | string;
   status: "todos" | Status;
   search?: string;
@@ -69,9 +69,7 @@ export function parseListFilter(input: unknown): ListFilter {
 
   let attorney: string = "todos";
   if (f.attorney !== undefined && f.attorney !== null && f.attorney !== "todos") {
-    if (f.attorney === "interesse")
-      throw new ValidationError("A aba de termos de interesse ainda não está disponível.");
-    attorney = assertUuid(f.attorney, "advogado");
+    attorney = f.attorney === "interesse" ? "interesse" : assertUuid(f.attorney, "advogado");
   }
 
   let status: ListFilter["status"] = "todos";

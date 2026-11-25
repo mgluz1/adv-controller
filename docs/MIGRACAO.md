@@ -60,7 +60,7 @@ A fixture executável do contrato está em `tests/browser/ui.spec.ts` e `tests/a
 | `djen_mutate` ✅ | `{ p_action: "status"\|"archive"\|"restore"\|"remove", p_ids: string[], p_status?, p_notes?, p_providence? }` | número de registros afetados (a UI exige `1` nas ações individuais) |
 | `djen_archive_preview` ✅ | `{ p_date }` | `{ count, rows[{source_id, process_number, tribunal}] }` (máx. 1.000 linhas) |
 | `djen_sync_manual` ✅ | — | `{ sucesso, mensagem?, erro? }` (limite: 1 a cada 5 min por escritório) |
-| `djen_diagnostics` (501) | — | `{ latest, last_success, next_due, pending_windows, runs[20], source_check }` |
+| `djen_diagnostics` ✅ | — | `{ latest, last_success, next_due, pending_windows, runs[20], source_check }` |
 
 Diferenças deliberadas em relação ao sistema de origem: `attorney_stats` agora traz `id` e `name`
 (as abas são geradas dos dados, sem OAB fixa); `djen_archive_preview` e `djen_sync_manual` /
@@ -84,9 +84,9 @@ Pontos novos do multi-escritório **(proposta)**:
 1. ~~Recuperar/reescrever o adaptador DJEN~~ **Feito**: `src/server/djen/client.ts` + `tests/djen-adapter.test.ts`
    (26 testes, sem rede). Falta validar contra a API real com `tests/a-migrar/probe-djen.ts`.
 2. ~~Esquema Drizzle~~ **Feito** (migrações 0003/0004): publicações, vínculos, cursores, execuções e termos de interesse.
-   Falta só `source_checks` (diagnóstico da fonte), planejada com a tarefa 1.6.
+   `source_checks` não virou tabela: o estado da fonte é derivado das execuções (1.6).
 3. ~~Operações da §3~~ **`djen_list`/`djen_mutate`/`djen_archive_preview` feitas** (com os cenários de isolamento, deduplicação,
-   N:N, arquivar/restaurar/tombstone e lote portados). Falta `djen_diagnostics` (1.6); `djen_sync_manual` está pronta (1.5).
+   N:N, arquivar/restaurar/tombstone e lote portados). `djen_sync_manual` (1.5) e `djen_diagnostics` (1.6) também estão prontas.
 4. Better Auth no Express (`/api/auth/*`) e troca do trecho provisório em `api.ts`.
 5. ~~Serviço de coleta~~ **Feito** (`src/server/collector/`, tarefa 1.4). O **agendador** também está pronto (1.5).
 6. Onboarding de escritório, cadastro de OABs e termos de interesse (hoje inexistentes).

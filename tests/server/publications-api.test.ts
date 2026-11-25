@@ -454,7 +454,7 @@ test("entradas inválidas são recusadas com 400 (nada chega ao banco)", async (
   for (const f of [
     { limit: 0 }, { limit: 101 }, { limit: 1.5 }, { limit: "20" }, { offset: -1 }, { offset: 1e9 },
     { start: "2026-02-31" }, { start: "19/10/2026" }, { end: "x" }, { start: "2026-10-20", end: "2026-10-19" },
-    { attorney: "xyz" }, { attorney: "interesse" }, { attorney: 5 },
+    { attorney: "xyz" }, { attorney: "Interesse" }, { attorney: 5 },
     { status: "inventado" }, { status: 3 }, { order: "sideways" }, { archived: "sim" },
     { search: "x".repeat(201) }, { search: "tem\u0000nulo" }, { tribunal: "x".repeat(41) }, { search: { $ne: 1 } },
   ])

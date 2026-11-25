@@ -53,6 +53,8 @@ before(async () => {
 });
 after(() => t.client.close());
 
+/** Termo de teste: o conteúdo do padrão é irrelevante para estas verificações de esquema (a regra está em interest.test.ts). */
+const term = (organizationId: string, t: string) => ({ organizationId, term: t, pattern: `p:${t}` });
 const insertPub = (org: string, over: Record<string, unknown> = {}) =>
   withTenant(t.db, org, (tx) => tx.insert(schema.publications).values(pub(org, over) as any).returning());
 
@@ -72,7 +74,7 @@ test("não grava em outro escritório (WITH CHECK) em NENHUMA das tabelas novas"
   await rejectsWith(insertPub(B).then(() => insertPubAs(A, B)), RLS);
   await rejectsWith(
     withTenant(t.db, A, (tx) =>
-      tx.insert(schema.interestTerms).values({ organizationId: B, term: "X.Y.Z." }),
+      tx.insert(schema.interestTerms).values(term(B, "X.Y.Z.")),
     ),
     RLS,
   );
@@ -297,11 +299,11 @@ test("restrições rejeitam dados inválidos mesmo sem passar pela API", async (
 });
 
 test("termos de interesse: únicos por escritório sem diferenciar maiúsculas; limites; sem controle", async () => {
-  await withTenant(t.db, A, (tx) => tx.insert(schema.interestTerms).values({ organizationId: A, term: "A.B.C.D." }));
-  await rejectsWith(withTenant(t.db, A, (tx) => tx.insert(schema.interestTerms).values({ organizationId: A, term: "a.b.c.d." })), UNIQUE);
-  await withTenant(t.db, B, (tx) => tx.insert(schema.interestTerms).values({ organizationId: B, term: "A.B.C.D." })); // outro escritório pode
-  for (const term of ["x", "x".repeat(81), "tem\nquebra", "tem\u0000nulo".replace("\u0000", "\u0001")])
-    await rejectsWith(withTenant(t.db, A, (tx) => tx.insert(schema.interestTerms).values({ organizationId: A, term })), CHECK);
+  await withTenant(t.db, A, (tx) => tx.insert(schema.interestTerms).values(term(A, "A.B.C.D.")));
+  await rejectsWith(withTenant(t.db, A, (tx) => tx.insert(schema.interestTerms).values(term(A, "a.b.c.d."))), UNIQUE);
+  await withTenant(t.db, B, (tx) => tx.insert(schema.interestTerms).values(term(B, "A.B.C.D."))); // outro escritório pode
+  for (const bad of ["x", "x".repeat(81), "tem\nquebra", "tem\u0001nulo"])
+    await rejectsWith(withTenant(t.db, A, (tx) => tx.insert(schema.interestTerms).values(term(A, bad))), CHECK);
   const a = await withTenant(t.db, A, (tx) => tx.select().from(schema.interestTerms));
   assert.ok(a.every((r) => r.organizationId === A));
 });
@@ -344,7 +346,7 @@ test("excluir o escritório apaga em cascata todos os dados de domínio (inclusi
   await withTenant(t.db, C, (tx) => tx.insert(schema.publicationAttorneys).values({ organizationId: C, publicationId: p.id, attorneyId: c1.id }));
   await withTenant(t.db, C, (tx) => tx.insert(schema.syncCursors).values({ organizationId: C, attorneyId: c1.id }));
   await withTenant(t.db, C, (tx) => tx.insert(schema.syncRuns).values({ organizationId: C, attorneyId: c1.id, windowDay: "2026-10-19" }));
-  await withTenant(t.db, C, (tx) => tx.insert(schema.interestTerms).values({ organizationId: C, term: "Z.Z." }));
+  await withTenant(t.db, C, (tx) => tx.insert(schema.interestTerms).values(term(C, "Z.Z.")));
   await t.raw.delete(schema.organization).where(eq(schema.organization.id, C));
   for (const tbl of schema.TENANT_TABLES) {
     const r = await t.db.execute(sql.raw(`select count(*)::int as n from public."${tbl}" where organization_id = 'org-c'`));

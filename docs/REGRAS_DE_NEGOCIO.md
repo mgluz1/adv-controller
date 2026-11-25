@@ -89,17 +89,17 @@ reimplementação · **[decisão]** depende de decisão de produto.
 - Filtros: advogado (aba), tribunal, status, arquivadas/ativas, período (7, 15 ou 30 dias, ou todo o
   histórico; datas calculadas em `America/Sao_Paulo`), busca livre (processo, tribunal, teor), ordenação
   por data de disponibilização, paginação (20/página).
-- **Termos de interesse [a migrar, decisão de modelo]**: no sistema de origem havia **uma sigla fixa
+- **Termos de interesse [vigente]**: no sistema de origem havia **uma sigla fixa
   do escritório** (aba própria). No SaaS isso vira **configuração por escritório** (lista de
   termos). Regra de casamento a preservar (única função, usada por linhas **e** contadores):
   - casa quando o termo aparece no **teor** ou nos **destinatários**, sem diferenciar maiúsculas;
   - a sigla é composta por letras **seguidas de ponto**, com espaços opcionais entre elas
-    (`A.B.C.D.`, `a.b.c.d.`, `A. B. C. D.`) e **delimitada** por não-letras;
+    (`A.B.C.D.`, `a.b.c.d.`, `A. B. C. D.`) e **delimitada** por não-letras (o ponto final é tolerado no fim da frase);
   - **não** casa: forma sem pontos (`ABCD LTDA`), letra colada depois (`A.B.C.DTDA`), letra colada
     antes (`SA.B.C.D`).
   - Publicações novas entram automaticamente na aba. A publicação que casa **deixa de ser exibida**
     na aba do advogado correspondente, mas **o vínculo não é alterado** (continua nas demais abas
-    a que pertence). Evidência: `tests/a-migrar/sql-supabase/interesse-rollback.sql`.
+    a que pertence). No SaaS, o “advogado correspondente” é uma propriedade **do termo** (opcional): sem ele, nenhuma aba de advogado esconde nada. Evidência: `tests/a-migrar/sql-supabase/interesse-rollback.sql`.
 
 ## 7. Datas e prazos **[decisão]**
 

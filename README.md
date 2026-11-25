@@ -5,7 +5,7 @@ SaaS para escritórios de advocacia acompanharem, revisarem e arquivarem as comu
 
 > **Estado: backend com autenticação, escritórios, papéis, OABs, isolamento por RLS, auditoria e as operações de
 > publicações (listar, revisar, arquivar, restaurar, descartar, lote).** O coletor e o agendador existem, mas **vêm desligados** e
-> nunca foram testados contra a API real do DJEN. **Ainda não existem** o pagamento nem `djen_diagnostics` (responde `501`). Veja [docs/BACKEND.md](docs/BACKEND.md).
+> nunca foram testados contra a API real do DJEN. **Ainda não existem** o pagamento, o e-mail transacional e as telas de gestão (OABs, membros, termos). Veja [docs/BACKEND.md](docs/BACKEND.md).
 
 ## Visão do produto
 
@@ -29,7 +29,8 @@ ainda); a assinatura mensal é o alvo e ainda não foi implementada.
 | Esquema de publicações (`publications`, vínculos, cursores, execuções, termos) | Pronto, com RLS e testado; aplicado na branch `development` do Neon |
 | Operações `djen_list`, `djen_mutate`, `djen_archive_preview` | Prontas e testadas (isolamento, papéis, auditoria) |
 | Coletor + agendador (`src/server/collector/`) e `djen_sync_manual` | Prontos e testados; **desligados por padrão** (`COLLECTOR_ENABLED=true` em uma instância); nunca falaram com a API real do DJEN |
-| `djen_diagnostics`, termos de interesse, assinaturas | **Não implementados** |
+| Termos de interesse (aba, contadores, gerência) e `djen_diagnostics` | Prontos e testados |
+| Assinaturas, e-mail transacional, telas de gestão | **Não implementados** |
 
 ## Rodando localmente
 
